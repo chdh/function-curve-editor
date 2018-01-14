@@ -3,6 +3,9 @@
    "dependencies": {
       "function-curve-editor": "^1.0.0"
    },
+   "devDependencies": {
+      "rollup-plugin-node-resolve": "^3.0.0"
+   },
    "scripts": {
       "build": "tsc && rollup -c"
    }
