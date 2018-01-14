@@ -1,0 +1,10 @@
+{
+   "private": true,
+   "devDependencies": {
+      "rollup-plugin-alias": "^1.4.0",
+      "rollup-plugin-node-resolve": "^3.0.0"
+   },
+   "scripts": {
+      "build": "tsc && rollup -c"
+   }
+}

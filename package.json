@@ -1,0 +1,34 @@
+{
+   "name": "function-curve-editor",
+   "version": "1.0.0",
+   "description": "A function curve editor widget / web component",
+   "types": "dist/Index.d.ts",
+   "module": "dist/Index.js",
+   "keywords": [
+      "function",
+      "curve",
+      "editor",
+      "math",
+      "interpolation",
+      "akima",
+      "cubic spline"
+   ],
+   "license": "MIT",
+   "homepage": "http://www.source-code.biz/snippets/typescript/functionCurveEditor",
+   "repository": "github:chdh/function-curve-editor",
+   "contributors": [
+      {
+         "name": "Christian d'Heureuse",
+         "email": "chdh@inventec.ch"
+      }
+   ],
+   "scripts": {
+      "build": "tsc"
+   },
+   "dependencies": {
+      "commons-math-interpolation": "^1.0.1"
+   },
+   "files": [
+      "dist/*"
+   ]
+}
