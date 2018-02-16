@@ -37,7 +37,7 @@ function addAnotherEditor() {
    element.setEditorState(initialEditorState);
    document.body.appendChild(element); }
 
-function startup() {
+function startup2() {
    FunctionCurveEditor.registerCustomElement();
    const element = <FunctionCurveEditor.FunctionCurveEditorElement>document.getElementById("editor1");
    element.setEditorState(initialEditorState);
@@ -45,5 +45,12 @@ function startup() {
    document.getElementById("helpButton")!.addEventListener("click", toggleHelp);
    document.getElementById("dumpButton")!.addEventListener("click", () => dumpFunctionValues(element.getFunction()));
    document.getElementById("addButton")!.addEventListener("click", addAnotherEditor); }
+
+function startup() {
+   try {
+      startup2(); }
+    catch (e) {
+      console.log(e);
+      alert("Error: " + e); }}
 
 document.addEventListener("DOMContentLoaded", startup);

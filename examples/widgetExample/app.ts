@@ -32,7 +32,7 @@ function toggleHelp() {
     else {
       t.classList.add("hidden"); }}
 
-function startup() {
+function startup2() {
    const canvas: HTMLCanvasElement = <HTMLCanvasElement>document.getElementById("functionCurveEditor");
    const widget = new FunctionCurveEditor.Widget(canvas);
    widget.setEditorState(initialEditorState);
@@ -40,5 +40,12 @@ function startup() {
    widget.addEventListener("change", () => console.log("Change event"));
    document.getElementById("helpButton")!.addEventListener("click", toggleHelp);
    document.getElementById("dumpButton")!.addEventListener("click", () => dumpFunctionValues(widget.getFunction())); }
+
+function startup() {
+   try {
+      startup2(); }
+    catch (e) {
+      console.log(e);
+      alert("Error: " + e); }}
 
 document.addEventListener("DOMContentLoaded", startup);

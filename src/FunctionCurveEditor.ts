@@ -343,7 +343,18 @@ class MouseController {
       if (event.deltaY == 0) {
          return; }
       const f = (event.deltaY > 0) ? Math.SQRT1_2 : Math.SQRT2;
-      wctx.zoom(f, f, cPoint);
+      let fx: number;
+      let fy: number;
+      if (event.shiftKey) {
+         fx = f;
+         fy = 1; }
+       else if (event.altKey || event.ctrlKey) {
+         fx = 1;
+         fy = f; }
+       else {
+         fx = f;
+         fy = f; }
+      wctx.zoom(fx, fy, cPoint);
       wctx.refresh();
       event.preventDefault(); };
 
@@ -363,6 +374,8 @@ class TouchController {
    private zoomStartDist:    number;
    private zoomStartFactorX: number;
    private zoomStartFactorY: number;
+   private zoomX:            boolean;
+   private zoomY:            boolean;
 
    constructor (wctx: WidgetContext) {
       this.wctx = wctx;
@@ -422,14 +435,17 @@ class TouchController {
       const cPoint1 = this.getCanvasCoordinatesFromTouch(touch1);
       const cPoint2 = this.getCanvasCoordinatesFromTouch(touch2);
       const cCenter = PointUtils.computeCenter(cPoint1, cPoint2);
+      const xDist = Math.abs(cPoint1.x - cPoint2.x);
+      const yDist = Math.abs(cPoint1.y - cPoint2.y);
       this.zoomLCenter = wctx.mapCanvasToLogicalCoordinates(cCenter);
       this.zoomStartDist = PointUtils.computeDistance(cPoint1, cPoint2);
       this.zoomStartFactorX = wctx.eState.zoomFactorX;
       this.zoomStartFactorY = wctx.eState.zoomFactorY;
+      this.zoomX = xDist * 2 > yDist;
+      this.zoomY = yDist * 2 > xDist;
       this.zooming = true; }
 
    private zoom (touches: TouchList) {
-      // TODO: Implement X/Y only (asymetric) zoom.
       const wctx = this.wctx;
       const touch1 = touches[0];
       const touch2 = touches[1];
@@ -438,8 +454,10 @@ class TouchController {
       const newCCenter = PointUtils.computeCenter(cPoint1, cPoint2);
       const newDist = PointUtils.computeDistance(cPoint1, cPoint2);
       const f = newDist / this.zoomStartDist;
-      wctx.eState.zoomFactorX = this.zoomStartFactorX * f;
-      wctx.eState.zoomFactorY = this.zoomStartFactorY * f;
+      if (this.zoomX) {
+         wctx.eState.zoomFactorX = this.zoomStartFactorX * f; }
+      if (this.zoomY) {
+         wctx.eState.zoomFactorY = this.zoomStartFactorY * f; }
       wctx.adjustPlaneOrigin(newCCenter, this.zoomLCenter);
       wctx.refresh(); }}
 
@@ -859,8 +877,11 @@ export class Widget {
          "click or tap on knot",           "select a knot",
          "Delete / Backspace",             "delete the selected knot",
          "double-click or double-tap",     "create a new knot",
-         "mouse wheel or touch gesture",   "zoom in/out (both axis)",
-         "+ / -",                          "zoom in/out (both axis)",
+         "mouse wheel",                    "zoom both axis",
+         "shift + mouse wheel",            "zoom x-axis",
+         "alt or ctrl + mouse wheel",      "zoom y-axis",
+         "touch zoom gesture",             "zoom x, y or both axis",
+         "+ / -",                          "zoom both axis in/out",
          "X / x",                          "zoom x-axis in/out",
          "Y / y",                          "zoom y-axis in/out",
          "e",                              "toggle extended function domain",
