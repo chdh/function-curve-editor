@@ -1,5 +1,7 @@
 import * as FunctionCurveEditor from "function-curve-editor";
 
+let widget: FunctionCurveEditor.Widget;
+
 const initialKnots: FunctionCurveEditor.Point[] = [
    {x: 0, y: 0.5 },
    {x: 1, y: 1   },
@@ -28,13 +30,13 @@ function toggleHelp() {
    const t = document.getElementById("helpText")!;
    if (t.classList.contains("hidden")) {
       t.classList.remove("hidden");
-      t.innerHTML = FunctionCurveEditor.Widget.getFormattedHelpText(); }
+      t.innerHTML = widget.getFormattedHelpText(); }
     else {
       t.classList.add("hidden"); }}
 
 function startup2() {
    const canvas: HTMLCanvasElement = <HTMLCanvasElement>document.getElementById("functionCurveEditor");
-   const widget = new FunctionCurveEditor.Widget(canvas);
+   widget = new FunctionCurveEditor.Widget(canvas);
    widget.setEditorState(initialEditorState);
    widget.connectedCallback();
    widget.addEventListener("change", () => console.log("Change event"));

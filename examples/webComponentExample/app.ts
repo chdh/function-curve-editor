@@ -28,7 +28,8 @@ function toggleHelp() {
    const t = document.getElementById("helpText")!;
    if (t.classList.contains("hidden")) {
       t.classList.remove("hidden");
-      t.innerHTML = FunctionCurveEditor.Widget.getFormattedHelpText(); }
+      const element = <FunctionCurveEditor.FunctionCurveEditorElement>document.getElementById("editor1");
+      t.innerHTML = element.getFormattedHelpText(); }
     else {
       t.classList.add("hidden"); }}
 

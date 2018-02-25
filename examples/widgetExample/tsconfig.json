@@ -1,16 +1,19 @@
 {
    "compilerOptions": {
-      "strict": true,
-      "noImplicitReturns": true,
+      "alwaysStrict": true,
+      "lib": ["ES6", "DOM"],
+      "module": "ES6",
+      "moduleResolution": "node",
       "noFallthroughCasesInSwitch": true,
+      "noImplicitAny": true,
+      "noImplicitReturns": true,
+      "noImplicitThis": true,
       "noUnusedLocals": true,
       "noUnusedParameters": true,
-      "lib": ["ES6", "DOM"],
-      "moduleResolution": "node",
-      "target": "ES6",
-      "module": "ES6",
-      "outDir": "tempBuild"
+      "outDir": "tempBuild",
+      "strictFunctionTypes": true,
+      "strictNullChecks": true,
+      "target": "ES6"
    },
    "files": ["app.ts"]
-
 }

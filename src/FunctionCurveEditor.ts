@@ -207,7 +207,7 @@ class PointerController {
 
    private wctx:             WidgetContext;
    private proximityRange:   number;
-   private dragStartPos:     Point | null;                 // logical coordinates of starting point of drag action
+   private dragStartPos:     Point | undefined;            // logical coordinates of starting point of drag action
 
    constructor (wctx: WidgetContext, proximityRange: number) {
       this.wctx = wctx;
@@ -233,7 +233,7 @@ class PointerController {
          wctx.refresh();
          wctx.fireChangeEvent();
          return true; }
-       else if (wctx.iState.planeDragging && this.dragStartPos != null) {
+       else if (wctx.iState.planeDragging && this.dragStartPos) {
          wctx.adjustPlaneOrigin(cPoint, this.dragStartPos);
          wctx.refresh();
          return true; }
@@ -250,7 +250,7 @@ class PointerController {
          return false; }
       wctx.iState.knotDragging = false;
       wctx.iState.planeDragging = false;
-      this.dragStartPos = null;
+      this.dragStartPos = undefined;
       wctx.refresh();
       return true; }
 
@@ -343,17 +343,24 @@ class MouseController {
       if (event.deltaY == 0) {
          return; }
       const f = (event.deltaY > 0) ? Math.SQRT1_2 : Math.SQRT2;
+      let zoomMode: ZoomMode;
+      if (event.shiftKey) {
+         zoomMode = ZoomMode.y; }
+       else if (event.altKey) {
+         zoomMode = ZoomMode.x; }
+       else if (event.ctrlKey) {
+         zoomMode = ZoomMode.xy; }
+       else {
+         zoomMode = wctx.eState.primaryZoomMode; }
       let fx: number;
       let fy: number;
-      if (event.shiftKey) {
-         fx = f;
-         fy = 1; }
-       else if (event.altKey || event.ctrlKey) {
-         fx = 1;
-         fy = f; }
-       else {
-         fx = f;
-         fy = f; }
+      switch (zoomMode) {
+         case ZoomMode.x: {
+            fx = f; fy = 1; break; }
+         case ZoomMode.y: {
+            fx = 1; fy = f; break; }
+         default: {
+            fx = f; fy = f; }}
       wctx.zoom(fx, fy, cPoint);
       wctx.refresh();
       event.preventDefault(); };
@@ -777,6 +784,8 @@ class WidgetContext {
 
 //--- Editor state -------------------------------------------------------------
 
+export const enum ZoomMode {x, y, xy};
+
 // Function curve editor state.
 export interface EditorState {
    knots:                    Point[];                      // knot points for the interpolation
@@ -788,7 +797,8 @@ export interface EditorState {
    relevantXMax:             number | null;                // upper edge of relevant X range or null
    gridEnabled:              boolean;                      // true to draw a coordinate grid
    snapToGridEnabled:        boolean;                      // true to enable snap to grid behavior
-   linearInterpolation:      boolean; }                    // true to only use linear interpolation, no Akima interpolation
+   linearInterpolation:      boolean;                      // true to only use linear interpolation, no Akima interpolation
+   primaryZoomMode:          ZoomMode; }                   // zoom mode to be used for mouse wheel when no shift/alt/ctrl-Key is pressed
 
 // Clones and adds missing fields.
 function cloneEditorState (eState: EditorState) : EditorState {
@@ -803,6 +813,7 @@ function cloneEditorState (eState: EditorState) : EditorState {
    eState2.gridEnabled         = get(eState.gridEnabled, true);
    eState2.snapToGridEnabled   = get(eState.snapToGridEnabled, true);
    eState2.linearInterpolation = get(eState.linearInterpolation, false);
+   eState2.primaryZoomMode     = get(eState.primaryZoomMode, ZoomMode.xy);
    return eState2;
    function get<T> (value: T, defaultValue: T) : T {
       return (value === undefined) ? defaultValue : value; }}
@@ -870,18 +881,21 @@ export class Widget {
       return this.wctx.createInterpolationFunction(); }
 
    // Returns the help text as an array.
-   public static getRawHelpText() : string[] {
+   public getRawHelpText() : string[] {
+      const pz = this.wctx.eState.primaryZoomMode;
+      const primaryZoomAxis = (pz == ZoomMode.x) ? "x-axis" : (pz == ZoomMode.y) ? "y-axis" : "both axes";
       return [
          "drag knot with mouse or touch",  "move a knot",
          "drag plane with mouse or touch", "move the coordinate space",
          "click or tap on knot",           "select a knot",
          "Delete / Backspace",             "delete the selected knot",
          "double-click or double-tap",     "create a new knot",
-         "mouse wheel",                    "zoom both axis",
-         "shift + mouse wheel",            "zoom x-axis",
-         "alt or ctrl + mouse wheel",      "zoom y-axis",
-         "touch zoom gesture",             "zoom x, y or both axis",
-         "+ / -",                          "zoom both axis in/out",
+         "mouse wheel",                    "zoom " + primaryZoomAxis,
+         "shift + mouse wheel",            "zoom y-axis",
+         "ctrl + mouse wheel",             "zoom both axes",
+         "alt + mouse wheel",              "zoom x-axis",
+         "touch zoom gesture",             "zoom x, y or both axes",
+         "+ / -",                          "zoom both axes in/out",
          "X / x",                          "zoom x-axis in/out",
          "Y / y",                          "zoom y-axis in/out",
          "e",                              "toggle extended function domain",
@@ -893,8 +907,8 @@ export class Widget {
          "r",                              "reset to the initial state" ]; }
 
    // Returns the help text as a HTML string.
-   public static getFormattedHelpText() : string {
-      const t = Widget.getRawHelpText();
+   public getFormattedHelpText() : string {
+      const t = this.getRawHelpText();
       const a: string[] = [];
       a.push("<table class='functionCurveEditorHelp'>");
       a.push( "<colgroup>");

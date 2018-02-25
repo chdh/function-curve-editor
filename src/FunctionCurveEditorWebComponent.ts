@@ -34,12 +34,12 @@ export class FunctionCurveEditorElement extends HTMLElement {
       return this.widget.getFunction(); }
 
    // Returns the help text as an array.
-   public static getRawHelpText() : string[] {
-      return Widget.getRawHelpText(); }
+   public getRawHelpText() : string[] {
+      return this.widget.getRawHelpText(); }
 
    // Returns the help text as a HTML string.
-   public static getFormattedHelpText() : string {
-      return Widget.getFormattedHelpText(); }}
+   public getFormattedHelpText() : string {
+      return this.widget.getFormattedHelpText(); }}
 
 const style = `
    :host {
