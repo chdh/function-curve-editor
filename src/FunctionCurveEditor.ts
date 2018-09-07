@@ -1,4 +1,5 @@
 import {UniFunction, createAkimaSplineInterpolator, createCubicSplineInterpolator, createLinearInterpolator} from "commons-math-interpolation";
+import EventTargetPolyfill from "./EventTargetPolyfill";
 
 //--- Point and PointUtils -----------------------------------------------------
 
@@ -45,7 +46,7 @@ class PointUtils {
 
    public static encodeCoordinateList (points: Point[]) : string {
       let s: string = "";
-      for (let point of points) {
+      for (const point of points) {
          if (s.length > 0) {
             s += ", "; }
          s += "[" + point.x + ", " + point.y + "]"; }
@@ -234,7 +235,7 @@ class PointerController {
          wctx.fireChangeEvent();
          return true; }
        else if (wctx.iState.planeDragging && this.dragStartPos) {
-         wctx.adjustPlaneOrigin(cPoint, this.dragStartPos);
+         wctx.moveCoordinatePlane(cPoint, this.dragStartPos);
          wctx.refresh();
          return true; }
        else {
@@ -267,7 +268,7 @@ class PointerController {
 
    private findNearKnot (cPoint: Point) : number | null {
       const wctx = this.wctx;
-      const r = wctx.findNearestKnot(cPoint)
+      const r = wctx.findNearestKnot(cPoint);
       return (r != null && r.distance <= this.proximityRange) ? r.knotNdx : null; }
 
    private snapToGrid (lPoint: Point) : Point {
@@ -279,7 +280,7 @@ class PointerController {
    private snapToGrid2 (lPos: number, xy: boolean) {
       const maxDistance = 5;
       const wctx = this.wctx;
-      let gp = wctx.getGridParms(xy);
+      const gp = wctx.getGridParms(xy);
       if (gp == null) {
          return lPos; }
       const gridSpace = gp.space * gp.span;
@@ -316,7 +317,7 @@ class MouseController {
 
    private mouseDownEventListener = (event: MouseEvent) => {
       const wctx = this.wctx;
-      if (event.which == 1) {
+      if (event.button == 0) {
          const cPoint = this.getCanvasCoordinatesFromEvent(event);
          this.pointerController.startDragging(cPoint);
          event.preventDefault();
@@ -332,7 +333,7 @@ class MouseController {
          event.preventDefault(); }};
 
    private dblClickEventListener = (event: MouseEvent) => {
-      if (event.which == 1) {
+      if (event.button == 0) {
          const cPoint = this.getCanvasCoordinatesFromEvent(event);
          this.pointerController.createKnot(cPoint);
          event.preventDefault(); }};
@@ -403,7 +404,7 @@ class TouchController {
       const touches = event.touches;
       if (touches.length == 1) {
          const touch = touches[0];
-         let cPoint = this.getCanvasCoordinatesFromTouch(touch);
+         const cPoint = this.getCanvasCoordinatesFromTouch(touch);
          if (this.lastTouchTime > 0 && performance.now() - this.lastTouchTime <= 300) { // double touch
             this.lastTouchTime = 0;
             this.pointerController.createKnot(cPoint); }
@@ -446,14 +447,15 @@ class TouchController {
       const yDist = Math.abs(cPoint1.y - cPoint2.y);
       this.zoomLCenter = wctx.mapCanvasToLogicalCoordinates(cCenter);
       this.zoomStartDist = PointUtils.computeDistance(cPoint1, cPoint2);
-      this.zoomStartFactorX = wctx.eState.zoomFactorX;
-      this.zoomStartFactorY = wctx.eState.zoomFactorY;
+      this.zoomStartFactorX = wctx.getZoomFactor(true);
+      this.zoomStartFactorY = wctx.getZoomFactor(false);
       this.zoomX = xDist * 2 > yDist;
       this.zoomY = yDist * 2 > xDist;
       this.zooming = true; }
 
    private zoom (touches: TouchList) {
       const wctx = this.wctx;
+      const eState = wctx.eState;
       const touch1 = touches[0];
       const touch2 = touches[1];
       const cPoint1 = this.getCanvasCoordinatesFromTouch(touch1);
@@ -462,10 +464,10 @@ class TouchController {
       const newDist = PointUtils.computeDistance(cPoint1, cPoint2);
       const f = newDist / this.zoomStartDist;
       if (this.zoomX) {
-         wctx.eState.zoomFactorX = this.zoomStartFactorX * f; }
+         eState.xMax = eState.xMin + wctx.canvas.width / (this.zoomStartFactorX * f); }
       if (this.zoomY) {
-         wctx.eState.zoomFactorY = this.zoomStartFactorY * f; }
-      wctx.adjustPlaneOrigin(newCCenter, this.zoomLCenter);
+         eState.yMax = eState.yMin + wctx.canvas.height / (this.zoomStartFactorY * f); }
+      wctx.moveCoordinatePlane(newCCenter, this.zoomLCenter);
       wctx.refresh(); }}
 
 //--- Keyboard controller ------------------------------------------------------
@@ -485,17 +487,17 @@ class KeyboardController {
       wctx.canvas.removeEventListener("keypress", this.keyPressEventListener); }
 
    private keyDownEventListener = (event: KeyboardEvent) => {
-      if (this.processKeyDown(event.which)) {
+      if (this.processKeyDown(event.key)) {
          event.stopPropagation(); }};
 
    private keyPressEventListener = (event: KeyboardEvent) => {
-      if (this.processKeyPress(event.which)) {
+      if (this.processKeyPress(event.key)) {
          event.stopPropagation(); }};
 
-   private processKeyDown (keyCode: number) {
+   private processKeyDown (key: string) {
       const wctx = this.wctx;
-      switch (keyCode) {
-         case 8: case 46: {                                // backspace and delete keys
+      switch (key) {
+         case "Backspace": case "Delete": {
             if (wctx.iState.selectedKnotNdx != null) {
                wctx.iState.knotDragging = false;
                wctx.deleteKnot(wctx.iState.selectedKnotNdx);
@@ -504,13 +506,12 @@ class KeyboardController {
             return true; }}
       return false; }
 
-   private processKeyPress (keyCharCode: number) {
+   private processKeyPress (key: string) {
       const wctx = this.wctx;
-      const c = String.fromCharCode(keyCharCode);
-      switch (c) {
+      switch (key) {
          case "+": case "-": case "x": case "X": case "y": case "Y": {
-            const fx = (c == '+' || c == 'X') ? Math.SQRT2 : (c == '-' || c == 'x') ? Math.SQRT1_2 : 1;
-            const fy = (c == '+' || c == 'Y') ? Math.SQRT2 : (c == '-' || c == 'y') ? Math.SQRT1_2 : 1;
+            const fx = (key == '+' || key == 'X') ? Math.SQRT2 : (key == '-' || key == 'x') ? Math.SQRT1_2 : 1;
+            const fy = (key == '+' || key == 'Y') ? Math.SQRT2 : (key == '-' || key == 'y') ? Math.SQRT1_2 : 1;
             wctx.zoom(fx, fy);
             wctx.refresh();
             return true; }
@@ -560,8 +561,6 @@ class KeyboardController {
 
 //--- Internal widget context --------------------------------------------------
 
-const changeEvent = new CustomEvent("change");
-
 interface InteractionState {
    selectedKnotNdx:          number | null;                // index of currently selected knot or null
    potentialKnotNdx:         number | null;                // index of potential target knot for mouse click (or null)
@@ -576,7 +575,7 @@ class WidgetContext {
    public kbController:      KeyboardController;
 
    public canvas:            HTMLCanvasElement;            // the DOM canvas element
-   public eventListeners:    EventListener[];
+   public eventTarget:       EventTarget;
    public isConnected:       boolean;
 
    public eState:            EditorState;                  // current editor state
@@ -585,7 +584,7 @@ class WidgetContext {
 
    constructor (canvas: HTMLCanvasElement) {
       this.canvas = canvas;
-      this.eventListeners = [];
+      this.eventTarget = new EventTargetPolyfill();
       this.isConnected = false;
       this.setEditorState(<EditorState>{});
       this.resetInteractionState();
@@ -635,19 +634,19 @@ class WidgetContext {
       this.resetInteractionState(); }
 
    public mapLogicalToCanvasXCoordinate (lx: number) : number {
-      return (lx - this.eState.planeOrigin.x) * this.eState.zoomFactorX; }
+      return (lx - this.eState.xMin) * this.canvas.width / (this.eState.xMax - this.eState.xMin); }
 
    public mapLogicalToCanvasYCoordinate (ly: number) : number {
-      return this.canvas.height - (ly - this.eState.planeOrigin.y) * this.eState.zoomFactorY; }
+      return this.canvas.height - (ly - this.eState.yMin) * this.canvas.height / (this.eState.yMax - this.eState.yMin); }
 
    public mapLogicalToCanvasCoordinates (lPoint: Point) : Point {
       return {x: this.mapLogicalToCanvasXCoordinate(lPoint.x), y: this.mapLogicalToCanvasYCoordinate(lPoint.y)}; }
 
    public mapCanvasToLogicalXCoordinate (cx: number) : number {
-      return this.eState.planeOrigin.x + cx / this.eState.zoomFactorX; }
+      return this.eState.xMin + cx * (this.eState.xMax - this.eState.xMin) / this.canvas.width; }
 
    public mapCanvasToLogicalYCoordinate (cy: number) : number {
-      return this.eState.planeOrigin.y + (this.canvas.height - cy) / this.eState.zoomFactorY; }
+      return this.eState.yMin + (this.canvas.height - cy) * (this.eState.yMax - this.eState.yMin) / this.canvas.height; }
 
    public mapCanvasToLogicalCoordinates (cPoint: Point) : Point {
       return {x: this.mapCanvasToLogicalXCoordinate(cPoint.x), y: this.mapCanvasToLogicalYCoordinate(cPoint.y)}; }
@@ -662,23 +661,33 @@ class WidgetContext {
       const y = y1 / rect.height * this.canvas.height;
       return {x, y}; }
 
-   public adjustPlaneOrigin (cPoint: Point, lPoint: Point) {
-      const x = lPoint.x - cPoint.x / this.eState.zoomFactorX;
-      const y = lPoint.y - (this.canvas.height - cPoint.y) / this.eState.zoomFactorY;
-      this.eState.planeOrigin = {x, y}; }
+   // Moves the coordinate plane so that `cPoint` (in canvas coordinates) matches
+   // `lPoint` (in logical coordinates), while keeping the zoom factors unchanged.
+   public moveCoordinatePlane (cPoint: Point, lPoint: Point) {
+      const eState = this.eState;
+      const lWidth  = eState.xMax - eState.xMin;
+      const lHeight = eState.yMax - eState.yMin;
+      const cWidth  = this.canvas.width;
+      const cHeight = this.canvas.height;
+      eState.xMin = lPoint.x - cPoint.x * lWidth / cWidth;
+      eState.xMax = eState.xMin + lWidth;
+      eState.yMin = lPoint.y - (cHeight - cPoint.y) * lHeight / cHeight;
+      eState.yMax = eState.yMin + lHeight; }
 
    public getZoomFactor (xy: boolean) : number {
-      return xy ? this.eState.zoomFactorX : this.eState.zoomFactorY; }
+      const eState = this.eState;
+      return xy ? this.canvas.width / (eState.xMax - eState.xMin) : this.canvas.height / (eState.yMax - eState.yMin); }
 
    public zoom (fx: number, fy?: number, cCenter?: Point) {
+      const eState = this.eState;
       if (fy == null) {
          fy = fx; }
       if (cCenter == null) {
          cCenter = {x: this.canvas.width / 2, y: this.canvas.height / 2}; }
       const lCenter = this.mapCanvasToLogicalCoordinates(cCenter);
-      this.eState.zoomFactorX *= fx;
-      this.eState.zoomFactorY *= fy;
-      this.adjustPlaneOrigin(cCenter, lCenter); }
+      eState.xMax = eState.xMin + (eState.xMax - eState.xMin) / fx;
+      eState.yMax = eState.yMin + (eState.yMax - eState.yMin) / fy;
+      this.moveCoordinatePlane(cCenter, lCenter); }
 
    public deleteKnot (knotNdx: number) {
       const knots = this.eState.knots;
@@ -723,7 +732,7 @@ class WidgetContext {
       this.iState.knotDragging = this.iState.knotDragging && this.iState.selectedKnotNdx != null; }
 
    // Returns the index and distance of the nearest knot or null.
-   public findNearestKnot (cPoint: Point) : {knotNdx: number, distance: number} | null {
+   public findNearestKnot (cPoint: Point) : {knotNdx: number; distance: number} | null {
       const knots = this.eState.knots;
       let minDist: number | null = null;
       let nearestKnotNdx: number | null = null;
@@ -736,9 +745,9 @@ class WidgetContext {
             minDist = d; }}
       return (nearestKnotNdx != null) ? {knotNdx: nearestKnotNdx, distance: minDist!} : null; }
 
-   public getGridParms (xy: boolean) : {space: number, span: number, pos: number, decPow: number} | null {
+   public getGridParms (xy: boolean) : {space: number; span: number; pos: number; decPow: number} | null {
       const minSpaceC = xy ? 66 : 50;                                              // minimum space between grid lines in pixel
-      const edge = xy ? this.eState.planeOrigin.x : this.eState.planeOrigin.y;     // canvas edge coordinate
+      const edge = xy ? this.eState.xMin : this.eState.yMin;                       // canvas edge coordinate
       const minSpaceL = minSpaceC / this.getZoomFactor(xy);                        // minimum space between grid lines in logical coordinate units
       const decPow = Math.ceil(Math.log(minSpaceL / 5) / Math.LN10);               // decimal power of grid line space
       const edgeDecPow = (edge == 0) ? -99 : Math.log(Math.abs(edge)) / Math.LN10; // decimal power of canvas coordinates
@@ -749,7 +758,7 @@ class WidgetContext {
       const span = (f > 2.001) ? 5 : (f > 1.001) ? 2 : 1;                          // span factor for visible grid lines
       const p1 = Math.ceil(edge / space);
       const pos = span * Math.ceil(p1 / span);                                     // position of first grid line in grid space units
-      return {space: space, span: span, pos: pos, decPow: decPow}; }
+      return {space, span, pos, decPow}; }
 
    public createInterpolationFunction() : UniFunction {
       const knots = this.eState.knots;
@@ -779,19 +788,20 @@ class WidgetContext {
       this.canvas.style.cursor = style; }
 
    public fireChangeEvent() {
-      for (let listener of this.eventListeners) {
-         listener.call(this, changeEvent); }}}
+      const event = new CustomEvent("change");
+      this.eventTarget.dispatchEvent(event); }}
 
 //--- Editor state -------------------------------------------------------------
 
-export const enum ZoomMode {x, y, xy};
+export const enum ZoomMode {x, y, xy}
 
 // Function curve editor state.
 export interface EditorState {
    knots:                    Point[];                      // knot points for the interpolation
-   planeOrigin:              Point;                        // coordinate plane origin (logical coordinates of lower left canvas corner)
-   zoomFactorX:              number;                       // zoom factor for x coordinate values
-   zoomFactorY:              number;                       // zoom factor for y coordinate values
+   xMin:                     number;                       // minimum x coordinate of the function graph area
+   xMax:                     number;                       // maximum x coordinate of the function graph area
+   yMin:                     number;                       // minimum y coordinate of the function graph area
+   yMax:                     number;                       // maximum y coordinate of the function graph area
    extendedDomain:           boolean;                      // false = function domain is from first to last knot, true = function domain is extended
    relevantXMin:             number | null;                // lower edge of relevant X range or null
    relevantXMax:             number | null;                // upper edge of relevant X range or null
@@ -802,11 +812,12 @@ export interface EditorState {
 
 // Clones and adds missing fields.
 function cloneEditorState (eState: EditorState) : EditorState {
-   let eState2 = <EditorState>{};
+   const eState2 = <EditorState>{};
    eState2.knots               = get(eState.knots, []).slice();
-   eState2.planeOrigin         = PointUtils.clone(get(eState.planeOrigin, {x: 0, y: 0}));
-   eState2.zoomFactorX         = get(eState.zoomFactorX, 1);
-   eState2.zoomFactorY         = get(eState.zoomFactorY, 1);
+   eState2.xMin                = get(eState.xMin, 0);
+   eState2.xMax                = get(eState.xMax, 1);
+   eState2.yMin                = get(eState.yMin, 0);
+   eState2.yMax                = get(eState.yMax, 1);
    eState2.extendedDomain      = get(eState.extendedDomain, true);
    eState2.relevantXMin        = get(eState.relevantXMin, null);
    eState2.relevantXMax        = get(eState.relevantXMax, null);
@@ -826,6 +837,11 @@ export class Widget {
 
    constructor (canvas: HTMLCanvasElement) {
       this.wctx = new WidgetContext(canvas); }
+
+   // Sets a new EventTarget for this widget.
+   // The web component calls this method to direct the events out of the shadow DOM.
+   public setEventTarget (eventTarget: EventTarget) {
+      this.wctx.eventTarget = eventTarget; }
 
    // Called after the widget has been inserted into the DOM.
    // Installs the internal event listeners for mouse, touch and keyboard.
@@ -847,22 +863,11 @@ export class Widget {
    // so that the function values are different. It is not fired when only the display
    // of the function has changed, e.g. by zooming or moving the plane.
    public addEventListener (type: string, listener: EventListener) {
-      if (type != "change") {
-         throw new Error("Unsupported event type."); }
-      const listeners = this.wctx.eventListeners;
-      if (listeners.indexOf(listener) >= 0) {
-         return; }
-      listeners.push(listener); }
+      this.wctx.eventTarget.addEventListener(type, listener); }
 
    // Deregisters an event listener.
    public removeEventListener (type: string, listener: EventListener) {
-      if (type != "change") {
-         throw new Error("Unsupported event type."); }
-      const listeners = this.wctx.eventListeners;
-      const p = listeners.indexOf(listener);
-      if (p < 0) {
-         return; }
-      listeners.splice(p, 1); }
+      this.wctx.eventTarget.removeEventListener(type, listener); }
 
    // Returns the current state of the function curve editor.
    public getEditorState() : EditorState {

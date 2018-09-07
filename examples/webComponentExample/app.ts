@@ -12,9 +12,10 @@ const initialKnots: FunctionCurveEditor.Point[] = [
 
 const initialEditorState = <FunctionCurveEditor.EditorState>{
    knots:          initialKnots,
-   planeOrigin:    {x: -1, y: -1.5},
-   zoomFactorX:    800 / 10,
-   zoomFactorY:    500 / 3,
+   xMin:           -1,
+   xMax:           9,
+   yMin:           -1.5,
+   yMax:           1.5,
    extendedDomain: true,
    relevantXMin:   -10,
    relevantXMax:   10,

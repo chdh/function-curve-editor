@@ -10,7 +10,7 @@ export class FunctionCurveEditorElement extends HTMLElement {
       this.shadowRoot!.innerHTML = htmlTemplate;
       const canvas = <HTMLCanvasElement>this.shadowRoot!.querySelector("canvas");
       this.widget = new Widget(canvas);
-      this.widget.addEventListener("change", (event: Event) => this.dispatchEvent(event)); }
+      this.widget.setEventTarget(this); }
 
    // Called by the browser when the element is inserted into the DOM.
    connectedCallback() {

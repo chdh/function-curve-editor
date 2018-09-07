@@ -2,7 +2,7 @@
    "compilerOptions": {
       "alwaysStrict": true,
       "declaration": true,
-      "lib": ["ES6", "DOM"],
+      "lib": ["ES7", "DOM"],
       "module": "ES6",
       "moduleResolution": "node",
       "noFallthroughCasesInSwitch": true,
@@ -13,6 +13,7 @@
       "noUnusedParameters": true,
       "outDir": "dist",
       "removeComments": true,
+      "sourceMap": true,
       "strictFunctionTypes": true,
       "strictNullChecks": true,
       "target": "ES6"
