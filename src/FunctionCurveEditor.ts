@@ -593,7 +593,7 @@ class WidgetContext {
       if (connected == this.isConnected) {
          return; }
       if (connected) {
-         this.plotter         = new FunctionPlotter(this); }
+         this.plotter         = new FunctionPlotter(this);
          this.mouseController = new MouseController(this);
          this.touchController = new TouchController(this);
          this.kbController    = new KeyboardController(this); }
