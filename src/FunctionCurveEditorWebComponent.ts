@@ -9,16 +9,16 @@ export class FunctionCurveEditorElement extends HTMLElement {
       this.attachShadow({mode: "open"});
       this.shadowRoot!.innerHTML = htmlTemplate;
       const canvas = <HTMLCanvasElement>this.shadowRoot!.querySelector("canvas");
-      this.widget = new Widget(canvas);
+      this.widget = new Widget(canvas, false);
       this.widget.setEventTarget(this); }
 
    // Called by the browser when the element is inserted into the DOM.
    connectedCallback() {
-      this.widget.connectedCallback(); }
+      this.widget.setConnected(true); }
 
    // Called by the browser when the element is removed from the DOM.
    disconnectedCallback() {
-      this.widget.disconnectedCallback(); }
+      this.widget.setConnected(false); }
 
    // Returns the current state of the function curve editor.
    public getEditorState() : EditorState {

@@ -39,7 +39,6 @@ function startup() {
    const canvas: HTMLCanvasElement = <HTMLCanvasElement>document.getElementById("functionCurveEditor");
    widget = new FunctionCurveEditor.Widget(canvas);
    widget.setEditorState(initialEditorState);
-   widget.connectedCallback();
    widget.addEventListener("change", () => console.log("Change event"));
    document.getElementById("helpButton")!.addEventListener("click", toggleHelp);
    document.getElementById("dumpButton")!.addEventListener("click", () => dumpFunctionValues(widget.getFunction())); }

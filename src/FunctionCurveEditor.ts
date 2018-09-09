@@ -587,24 +587,21 @@ class WidgetContext {
       this.eventTarget = new EventTargetPolyfill();
       this.isConnected = false;
       this.setEditorState(<EditorState>{});
-      this.resetInteractionState();
-      this.plotter = new FunctionPlotter(this); }
+      this.resetInteractionState(); }
 
-   public connect() {
-      if (this.isConnected) {
+   public setConnected (connected: boolean) {
+      if (connected == this.isConnected) {
          return; }
-      this.mouseController = new MouseController(this);
-      this.touchController = new TouchController(this);
-      this.kbController    = new KeyboardController(this);
-      this.isConnected = true; }
-
-   public disconnect() {
-      if (!this.isConnected) {
-         return; }
-      this.mouseController.dispose();
-      this.touchController.dispose();
-      this.kbController.dispose();
-      this.isConnected = false; }
+      if (connected) {
+         this.plotter         = new FunctionPlotter(this); }
+         this.mouseController = new MouseController(this);
+         this.touchController = new TouchController(this);
+         this.kbController    = new KeyboardController(this); }
+       else {
+         this.mouseController.dispose();
+         this.touchController.dispose();
+         this.kbController.dispose(); }
+      this.isConnected = connected; }
 
    public adjustBackingBitmapResolution() {
       this.canvas.width = this.canvas.clientWidth || 200;
@@ -835,27 +832,26 @@ export class Widget {
 
    private wctx:             WidgetContext;
 
-   constructor (canvas: HTMLCanvasElement) {
-      this.wctx = new WidgetContext(canvas); }
+   constructor (canvas: HTMLCanvasElement, connected = true) {
+      this.wctx = new WidgetContext(canvas);
+      if (connected) {
+         this.setConnected(true); }}
 
    // Sets a new EventTarget for this widget.
    // The web component calls this method to direct the events out of the shadow DOM.
    public setEventTarget (eventTarget: EventTarget) {
       this.wctx.eventTarget = eventTarget; }
 
-   // Called after the widget has been inserted into the DOM.
-   // Installs the internal event listeners for mouse, touch and keyboard.
-   // Adjusts the resolution of the backing bitmap.
-   public connectedCallback() {
+   // Called after the widget is inserted into or removed from the DOM.
+   // It installs or removes the internal event listeners for mouse, touch and keyboard.
+   // When the widget is connected, it also adjusts the resolution of the backing bitmap
+   // and draws the widget.
+   public setConnected (connected: boolean) {
       const wctx = this.wctx;
-      wctx.connect();
-      wctx.adjustBackingBitmapResolution();
-      wctx.refresh(); }
-
-   // Called when the widget is removed from the DOM.
-   // Uninstalls the internal event listeners for mouse, touch and keyboard.
-   public disconnectedCallback() {
-      this.wctx.disconnect(); }
+      this.wctx.setConnected(connected);
+      if (connected) {
+         wctx.adjustBackingBitmapResolution();
+         wctx.refresh(); }}
 
    // Registers an event listener.
    // Currently only the "change" event is supported.
