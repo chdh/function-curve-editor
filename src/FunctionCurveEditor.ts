@@ -760,8 +760,8 @@ class WidgetContext {
    public createInterpolationFunction() : UniFunction {
       const knots = this.eState.knots;
       const n = knots.length;
-      const xVals: number[] = Array(n);
-      const yVals: number[] = Array(n);
+      const xVals = new Float64Array(n);
+      const yVals = new Float64Array(n);
       for (let i = 0; i < n; i++) {
          xVals[i] = knots[i].x;
          yVals[i] = knots[i].y; }
