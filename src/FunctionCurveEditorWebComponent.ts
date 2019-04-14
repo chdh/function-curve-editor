@@ -60,7 +60,7 @@ const style = `
 
 const htmlTemplate = `
    <style>${style}</style>
-   <canvas tabindex="1">
+   <canvas tabindex="-1">
    </canvas>
    `;
 

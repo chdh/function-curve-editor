@@ -1,4 +1,5 @@
-import {UniFunction, createAkimaSplineInterpolator, createCubicSplineInterpolator, createLinearInterpolator} from "commons-math-interpolation";
+import * as CommonsMathInterpolation from "commons-math-interpolation";
+import {UniFunction} from "commons-math-interpolation";
 import EventTargetPolyfill from "./EventTargetPolyfill";
 
 //--- Point and PointUtils -----------------------------------------------------
@@ -508,6 +509,7 @@ class KeyboardController {
 
    private processKeyPress (key: string) {
       const wctx = this.wctx;
+      const eState = wctx.eState;
       switch (key) {
          case "+": case "-": case "x": case "X": case "y": case "Y": {
             const fx = (key == '+' || key == 'X') ? Math.SQRT2 : (key == '-' || key == 'x') ? Math.SQRT1_2 : 1;
@@ -526,23 +528,23 @@ class KeyboardController {
             wctx.fireChangeEvent();
             return true; }
          case "e": {
-            wctx.eState.extendedDomain = !wctx.eState.extendedDomain;
+            eState.extendedDomain = !eState.extendedDomain;
             wctx.refresh();
             return true; }
          case "g": {
-            wctx.eState.gridEnabled = !wctx.eState.gridEnabled;
+            eState.gridEnabled = !eState.gridEnabled;
             wctx.refresh();
             return true; }
          case "s": {
-            wctx.eState.snapToGridEnabled = !wctx.eState.snapToGridEnabled;
+            eState.snapToGridEnabled = !eState.snapToGridEnabled;
             return true; }
          case "l": {
-            wctx.eState.linearInterpolation = !wctx.eState.linearInterpolation;
+            eState.interpolationMethod = (eState.interpolationMethod == InterpolationMethod.linear) ? InterpolationMethod.akima : InterpolationMethod.linear;
             wctx.refresh();
             wctx.fireChangeEvent();
             return true; }
          case "k": {
-            const s1 = PointUtils.encodeCoordinateList(wctx.eState.knots);
+            const s1 = PointUtils.encodeCoordinateList(eState.knots);
             const s2 = window.prompt("Knot coordinates:", s1);
             if (s2 == null || s2 == "" || s1 == s2) {
                return; }
@@ -586,8 +588,7 @@ class WidgetContext {
       this.canvas = canvas;
       this.eventTarget = new EventTargetPolyfill();
       this.isConnected = false;
-      this.setEditorState(<EditorState>{});
-      this.resetInteractionState(); }
+      this.setEditorState(<EditorState>{}); }
 
    public setConnected (connected: boolean) {
       if (connected == this.isConnected) {
@@ -609,7 +610,8 @@ class WidgetContext {
 
    public setEditorState (eState: EditorState) {
       this.eState = cloneEditorState(eState);
-      this.initialEState = cloneEditorState(eState); }
+      this.initialEState = cloneEditorState(eState);
+      this.resetInteractionState(); }
 
    public getEditorState() : EditorState {
       return cloneEditorState(this.eState); }
@@ -623,8 +625,7 @@ class WidgetContext {
 
    // Resets the context to the initial state.
    public reset() {
-      this.setEditorState(this.initialEState);
-      this.resetInteractionState(); }
+      this.setEditorState(this.initialEState); }
 
    public clearKnots() {
       this.eState.knots = Array();
@@ -765,15 +766,20 @@ class WidgetContext {
       for (let i = 0; i < n; i++) {
          xVals[i] = knots[i].x;
          yVals[i] = knots[i].y; }
-      if (n >= 5 && !this.eState.linearInterpolation) {
-         return createAkimaSplineInterpolator(xVals, yVals); }
-       else if (n >= 3 && !this.eState.linearInterpolation) {
-         return createCubicSplineInterpolator(xVals, yVals); }
-       else if (n >= 2) {
-         return createLinearInterpolator(xVals, yVals); }
-       else {
-         const c = (n == 1) ? knots[0].y : 1;
-         return (_x: number) => c; }}
+      let iMethod = this.eState.interpolationMethod;
+      if (n < 5 && iMethod == InterpolationMethod.akima) {
+         iMethod = InterpolationMethod.cubic; }
+      if (n < 3 && iMethod == InterpolationMethod.cubic) {
+         iMethod = InterpolationMethod.linear; }
+      if (n < 2) {
+         const c = (n == 1) ? knots[0].y : 0;
+         return (_x: number) => c; }
+      switch (iMethod) {
+         case InterpolationMethod.akima:           return CommonsMathInterpolation.createAkimaSplineInterpolator(xVals, yVals);
+         case InterpolationMethod.cubic:           return CommonsMathInterpolation.createCubicSplineInterpolator(xVals, yVals);
+         case InterpolationMethod.linear:          return CommonsMathInterpolation.createLinearInterpolator(xVals, yVals);
+         case InterpolationMethod.nearestNeighbor: return CommonsMathInterpolation.createNearestNeighborInterpolator(xVals, yVals);
+         default:                                  throw new Error("Unknown interpolation method"); }}
 
    // Re-paints the canvas and updates the cursor.
    public refresh() {
@@ -791,6 +797,8 @@ class WidgetContext {
 //--- Editor state -------------------------------------------------------------
 
 export const enum ZoomMode {x, y, xy}
+export const enum InterpolationMethod {akima, cubic, linear, nearestNeighbor}
+export const interpolationMethodNames = ["akima", "cubic", "linear", "nearestNeighbor"];
 
 // Function curve editor state.
 export interface EditorState {
@@ -804,7 +812,7 @@ export interface EditorState {
    relevantXMax:             number | null;                // upper edge of relevant X range or null
    gridEnabled:              boolean;                      // true to draw a coordinate grid
    snapToGridEnabled:        boolean;                      // true to enable snap to grid behavior
-   linearInterpolation:      boolean;                      // true to only use linear interpolation, no Akima interpolation
+   interpolationMethod:      InterpolationMethod;          // optimal interpolation method
    primaryZoomMode:          ZoomMode; }                   // zoom mode to be used for mouse wheel when no shift/alt/ctrl-Key is pressed
 
 // Clones and adds missing fields.
@@ -820,7 +828,7 @@ function cloneEditorState (eState: EditorState) : EditorState {
    eState2.relevantXMax        = get(eState.relevantXMax, null);
    eState2.gridEnabled         = get(eState.gridEnabled, true);
    eState2.snapToGridEnabled   = get(eState.snapToGridEnabled, true);
-   eState2.linearInterpolation = get(eState.linearInterpolation, false);
+   eState2.interpolationMethod = get(eState.interpolationMethod, InterpolationMethod.akima);
    eState2.primaryZoomMode     = get(eState.primaryZoomMode, ZoomMode.xy);
    return eState2;
    function get<T> (value: T, defaultValue: T) : T {

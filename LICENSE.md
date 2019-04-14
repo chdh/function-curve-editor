@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2017 [these people](https://github.com/chdh/function-curve-editor/graphs/contributors)
+Copyright (c) 2017-2019 Christian d'Heureuse, chdh@inventec.ch
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
