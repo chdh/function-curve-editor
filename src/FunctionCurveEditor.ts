@@ -1,5 +1,4 @@
-import * as CommonsMathInterpolation from "commons-math-interpolation";
-import {UniFunction} from "commons-math-interpolation";
+import {UniFunction, InterpolationMethod, createInterpolatorWithFallback} from "commons-math-interpolation";
 import EventTargetPolyfill from "./EventTargetPolyfill";
 
 //--- Point and PointUtils -----------------------------------------------------
@@ -22,19 +21,19 @@ class PointUtils {
    public static computeCenter (point1: Point, point2: Point) : Point {
       return {x: (point1.x + point2.x) / 2, y: (point1.y + point2.y) / 2}; }
 
-   // Returns the index of points1[pointIndex] in points2, or null.
-   public static mapPointIndex (points1: Point[], points2: Point[], pointIndex: number | null) : number | null {
-      if (pointIndex == null) {
-         return null; }
+   // Returns the index of points1[pointIndex] in points2, or undefined.
+   public static mapPointIndex (points1: Point[], points2: Point[], pointIndex: number | undefined) : number | undefined {
+      if (pointIndex == undefined) {
+         return; }
       const point = points1[pointIndex];
       return PointUtils.findPoint(points2, point); }
 
-   // Returns the index of point in the points array or null.
-   public static findPoint (points: Point[], point: Point) : number | null {
-      if (point == null) {
-         return null; }
+   // Returns the index of point in the points array or undefined.
+   public static findPoint (points: Point[], point: Point) : number | undefined {
+      if (!point) {
+         return; }
       const i = points.indexOf(point);
-      return (i >= 0) ? i : null; }
+      return (i >= 0) ? i : undefined; }
 
    public static makeXValsStrictMonotonic (points: Point[]) {
       for (let i = 1; i < points.length; i++) {
@@ -73,7 +72,7 @@ class FunctionPlotter {
    constructor (wctx: WidgetContext) {
       this.wctx = wctx;
       const ctx = wctx.canvas.getContext("2d");
-      if (ctx == null) {
+      if (!ctx) {
          throw new Error("Canvas 2D context not available."); }
       this.ctx = ctx; }
 
@@ -83,8 +82,8 @@ class FunctionPlotter {
       ctx.save();
       const width  = wctx.canvas.width;
       const height = wctx.canvas.height;
-      const xMin = (wctx.eState.relevantXMin != null) ? Math.max(0,    Math.min(width, wctx.mapLogicalToCanvasXCoordinate(wctx.eState.relevantXMin))) : 0;
-      const xMax = (wctx.eState.relevantXMax != null) ? Math.max(xMin, Math.min(width, wctx.mapLogicalToCanvasXCoordinate(wctx.eState.relevantXMax))) : width;
+      const xMin = (wctx.eState.relevantXMin != undefined) ? Math.max(0,    Math.min(width, wctx.mapLogicalToCanvasXCoordinate(wctx.eState.relevantXMin))) : 0;
+      const xMax = (wctx.eState.relevantXMax != undefined) ? Math.max(xMin, Math.min(width, wctx.mapLogicalToCanvasXCoordinate(wctx.eState.relevantXMax))) : width;
       if (xMin > 0) {
          ctx.fillStyle = "#F8F8F8";
          ctx.fillRect(0, 0, xMin, height); }
@@ -149,7 +148,7 @@ class FunctionPlotter {
    private drawXYGrid (xy: boolean) {
       const wctx = this.wctx;
       const gp = wctx.getGridParms(xy);
-      if (gp == null) {
+      if (!gp) {
          return; }
       let p = gp.pos;
       let loopCtr = 0;
@@ -220,15 +219,15 @@ class PointerController {
       const lPoint = wctx.mapCanvasToLogicalCoordinates(cPoint);
       const knotNdx = this.findNearKnot(cPoint);
       wctx.iState.selectedKnotNdx = knotNdx;
-      wctx.iState.knotDragging = knotNdx != null;
-      wctx.iState.planeDragging = knotNdx == null;
+      wctx.iState.knotDragging = knotNdx != undefined;
+      wctx.iState.planeDragging = knotNdx == undefined;
       this.dragStartPos = lPoint;
-      wctx.iState.potentialKnotNdx = null;
+      wctx.iState.potentialKnotNdx = undefined;
       wctx.refresh(); }
 
    public processPointerMove (cPoint: Point) : boolean {
       const wctx = this.wctx;
-      if (wctx.iState.knotDragging && wctx.iState.selectedKnotNdx != null) {
+      if (wctx.iState.knotDragging && wctx.iState.selectedKnotNdx != undefined) {
          const lPoint = wctx.mapCanvasToLogicalCoordinates(cPoint);
          const lPoint2 = this.snapToGrid(lPoint);
          wctx.moveKnot(wctx.iState.selectedKnotNdx, lPoint2);
@@ -267,10 +266,10 @@ class PointerController {
       wctx.refresh();
       wctx.fireChangeEvent(); }
 
-   private findNearKnot (cPoint: Point) : number | null {
+   private findNearKnot (cPoint: Point) : number | undefined {
       const wctx = this.wctx;
       const r = wctx.findNearestKnot(cPoint);
-      return (r != null && r.distance <= this.proximityRange) ? r.knotNdx : null; }
+      return (r && r.distance <= this.proximityRange) ? r.knotNdx : undefined; }
 
    private snapToGrid (lPoint: Point) : Point {
       const wctx = this.wctx;
@@ -282,7 +281,7 @@ class PointerController {
       const maxDistance = 5;
       const wctx = this.wctx;
       const gp = wctx.getGridParms(xy);
-      if (gp == null) {
+      if (!gp) {
          return lPos; }
       const gridSpace = gp.space * gp.span;
       const gridPos = Math.round(lPos / gridSpace) * gridSpace;
@@ -378,7 +377,7 @@ class TouchController {
    private wctx:             WidgetContext;
    private pointerController: PointerController;
    private lastTouchTime:    number;
-   private zooming:          boolean;
+   private zooming:          boolean = false;
    private zoomLCenter:      Point;
    private zoomStartDist:    number;
    private zoomStartFactorX: number;
@@ -499,7 +498,7 @@ class KeyboardController {
       const wctx = this.wctx;
       switch (key) {
          case "Backspace": case "Delete": {
-            if (wctx.iState.selectedKnotNdx != null) {
+            if (wctx.iState.selectedKnotNdx != undefined) {
                wctx.iState.knotDragging = false;
                wctx.deleteKnot(wctx.iState.selectedKnotNdx);
                wctx.refresh();
@@ -539,14 +538,14 @@ class KeyboardController {
             eState.snapToGridEnabled = !eState.snapToGridEnabled;
             return true; }
          case "l": {
-            eState.interpolationMethod = (eState.interpolationMethod == InterpolationMethod.linear) ? InterpolationMethod.akima : InterpolationMethod.linear;
+            eState.interpolationMethod = (eState.interpolationMethod == "linear") ? "akima" : "linear";
             wctx.refresh();
             wctx.fireChangeEvent();
             return true; }
          case "k": {
             const s1 = PointUtils.encodeCoordinateList(eState.knots);
             const s2 = window.prompt("Knot coordinates:", s1);
-            if (s2 == null || s2 == "" || s1 == s2) {
+            if (!s2 || s1 == s2) {
                return; }
             let newKnots: Point[];
             try {
@@ -564,8 +563,8 @@ class KeyboardController {
 //--- Internal widget context --------------------------------------------------
 
 interface InteractionState {
-   selectedKnotNdx:          number | null;                // index of currently selected knot or null
-   potentialKnotNdx:         number | null;                // index of potential target knot for mouse click (or null)
+   selectedKnotNdx:          number | undefined;           // index of currently selected knot or undefined
+   potentialKnotNdx:         number | undefined;           // index of potential target knot for mouse click (or undefined)
    knotDragging:             boolean;                      // true if the selected knot is beeing dragged
    planeDragging:            boolean; }                    // true if the coordinate plane is beeing dragged
 
@@ -618,8 +617,8 @@ class WidgetContext {
 
    private resetInteractionState() {
       this.iState = {
-         selectedKnotNdx:  null,
-         potentialKnotNdx: null,
+         selectedKnotNdx:  undefined,
+         potentialKnotNdx: undefined,
          knotDragging:     false,
          planeDragging:    false}; }
 
@@ -676,12 +675,10 @@ class WidgetContext {
       const eState = this.eState;
       return xy ? this.canvas.width / (eState.xMax - eState.xMin) : this.canvas.height / (eState.yMax - eState.yMin); }
 
-   public zoom (fx: number, fy?: number, cCenter?: Point) {
+   public zoom (fx: number, fyOpt?: number, cCenterOpt?: Point) {
       const eState = this.eState;
-      if (fy == null) {
-         fy = fx; }
-      if (cCenter == null) {
-         cCenter = {x: this.canvas.width / 2, y: this.canvas.height / 2}; }
+      const fy = (fyOpt != undefined) ? fyOpt : fx;
+      const cCenter = cCenterOpt ? cCenterOpt : {x: this.canvas.width / 2, y: this.canvas.height / 2};
       const lCenter = this.mapCanvasToLogicalCoordinates(cCenter);
       eState.xMax = eState.xMin + (eState.xMax - eState.xMin) / fx;
       eState.yMax = eState.yMin + (eState.yMax - eState.yMin) / fy;
@@ -705,7 +702,7 @@ class WidgetContext {
       const knotNdx = PointUtils.findPoint(this.eState.knots, knot);
         // (warning: This only works as long as makeXValsStrictMonotonic() modified the knots in-place and
         // does not construct new knot point objects)
-      if (knotNdx == null) {
+      if (knotNdx == undefined) {
          throw new Error("Program logic error."); }
       return knotNdx; }
 
@@ -727,30 +724,30 @@ class WidgetContext {
    private fixUpKnotIndexes (oldKnots: Point[]) {
       this.iState.selectedKnotNdx  = PointUtils.mapPointIndex(oldKnots, this.eState.knots, this.iState.selectedKnotNdx);
       this.iState.potentialKnotNdx = PointUtils.mapPointIndex(oldKnots, this.eState.knots, this.iState.potentialKnotNdx);
-      this.iState.knotDragging = this.iState.knotDragging && this.iState.selectedKnotNdx != null; }
+      this.iState.knotDragging = this.iState.knotDragging && this.iState.selectedKnotNdx != undefined; }
 
-   // Returns the index and distance of the nearest knot or null.
-   public findNearestKnot (cPoint: Point) : {knotNdx: number; distance: number} | null {
+   // Returns the index and distance of the nearest knot or undefined.
+   public findNearestKnot (cPoint: Point) : {knotNdx: number; distance: number} | undefined {
       const knots = this.eState.knots;
-      let minDist: number | null = null;
-      let nearestKnotNdx: number | null = null;
+      let minDist: number | undefined = undefined;
+      let nearestKnotNdx: number | undefined = undefined;
       for (let i = 0; i < knots.length; i++) {
          const lKnot = knots[i];
          const cKnot = this.mapLogicalToCanvasCoordinates(lKnot);
          const d = PointUtils.computeDistance(cKnot, cPoint);
-         if (minDist == null || d < minDist) {
+         if (minDist == undefined || d < minDist) {
             nearestKnotNdx = i;
             minDist = d; }}
-      return (nearestKnotNdx != null) ? {knotNdx: nearestKnotNdx, distance: minDist!} : null; }
+      return (nearestKnotNdx != undefined) ? {knotNdx: nearestKnotNdx, distance: minDist!} : undefined; }
 
-   public getGridParms (xy: boolean) : {space: number; span: number; pos: number; decPow: number} | null {
+   public getGridParms (xy: boolean) : {space: number; span: number; pos: number; decPow: number} | undefined {
       const minSpaceC = xy ? 66 : 50;                                              // minimum space between grid lines in pixel
       const edge = xy ? this.eState.xMin : this.eState.yMin;                       // canvas edge coordinate
       const minSpaceL = minSpaceC / this.getZoomFactor(xy);                        // minimum space between grid lines in logical coordinate units
       const decPow = Math.ceil(Math.log(minSpaceL / 5) / Math.LN10);               // decimal power of grid line space
       const edgeDecPow = (edge == 0) ? -99 : Math.log(Math.abs(edge)) / Math.LN10; // decimal power of canvas coordinates
       if (edgeDecPow - decPow > 10) {
-         return null; }                                                            // numerically instable
+         return undefined; }                                                       // numerically instable
       const space = Math.pow(10, decPow);                                          // grid line space (distance) in logical units
       const f = minSpaceL / space;                                                 // minimum for span factor
       const span = (f > 2.001) ? 5 : (f > 1.001) ? 2 : 1;                          // span factor for visible grid lines
@@ -766,20 +763,7 @@ class WidgetContext {
       for (let i = 0; i < n; i++) {
          xVals[i] = knots[i].x;
          yVals[i] = knots[i].y; }
-      let iMethod = this.eState.interpolationMethod;
-      if (n < 5 && iMethod == InterpolationMethod.akima) {
-         iMethod = InterpolationMethod.cubic; }
-      if (n < 3 && iMethod == InterpolationMethod.cubic) {
-         iMethod = InterpolationMethod.linear; }
-      if (n < 2) {
-         const c = (n == 1) ? knots[0].y : 0;
-         return (_x: number) => c; }
-      switch (iMethod) {
-         case InterpolationMethod.akima:           return CommonsMathInterpolation.createAkimaSplineInterpolator(xVals, yVals);
-         case InterpolationMethod.cubic:           return CommonsMathInterpolation.createCubicSplineInterpolator(xVals, yVals);
-         case InterpolationMethod.linear:          return CommonsMathInterpolation.createLinearInterpolator(xVals, yVals);
-         case InterpolationMethod.nearestNeighbor: return CommonsMathInterpolation.createNearestNeighborInterpolator(xVals, yVals);
-         default:                                  throw new Error("Unknown interpolation method"); }}
+      return createInterpolatorWithFallback(this.eState.interpolationMethod, xVals, yVals); }
 
    // Re-paints the canvas and updates the cursor.
    public refresh() {
@@ -797,8 +781,7 @@ class WidgetContext {
 //--- Editor state -------------------------------------------------------------
 
 export const enum ZoomMode {x, y, xy}
-export const enum InterpolationMethod {akima, cubic, linear, nearestNeighbor}
-export const interpolationMethodNames = ["akima", "cubic", "linear", "nearestNeighbor"];
+export {InterpolationMethod};
 
 // Function curve editor state.
 export interface EditorState {
@@ -808,8 +791,8 @@ export interface EditorState {
    yMin:                     number;                       // minimum y coordinate of the function graph area
    yMax:                     number;                       // maximum y coordinate of the function graph area
    extendedDomain:           boolean;                      // false = function domain is from first to last knot, true = function domain is extended
-   relevantXMin:             number | null;                // lower edge of relevant X range or null
-   relevantXMax:             number | null;                // upper edge of relevant X range or null
+   relevantXMin?:            number | undefined;           // lower edge of relevant X range or undefined
+   relevantXMax?:            number | undefined;           // upper edge of relevant X range or undefined
    gridEnabled:              boolean;                      // true to draw a coordinate grid
    snapToGridEnabled:        boolean;                      // true to enable snap to grid behavior
    interpolationMethod:      InterpolationMethod;          // optimal interpolation method
@@ -824,11 +807,11 @@ function cloneEditorState (eState: EditorState) : EditorState {
    eState2.yMin                = get(eState.yMin, 0);
    eState2.yMax                = get(eState.yMax, 1);
    eState2.extendedDomain      = get(eState.extendedDomain, true);
-   eState2.relevantXMin        = get(eState.relevantXMin, null);
-   eState2.relevantXMax        = get(eState.relevantXMax, null);
+   eState2.relevantXMin        = eState.relevantXMin;
+   eState2.relevantXMax        = eState.relevantXMax;
    eState2.gridEnabled         = get(eState.gridEnabled, true);
    eState2.snapToGridEnabled   = get(eState.snapToGridEnabled, true);
-   eState2.interpolationMethod = get(eState.interpolationMethod, InterpolationMethod.akima);
+   eState2.interpolationMethod = get(eState.interpolationMethod, "akima");
    eState2.primaryZoomMode     = get(eState.primaryZoomMode, ZoomMode.xy);
    return eState2;
    function get<T> (value: T, defaultValue: T) : T {

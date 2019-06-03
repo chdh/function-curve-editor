@@ -1,7 +1,7 @@
 {
    "compilerOptions": {
-      "alwaysStrict": true,
-      "baseUrl": ".",
+      "allowUnreachableCode": false,
+      "baseUrl": "src",
       "lib": ["ES6", "DOM"],
       "module": "ES6",
       "moduleResolution": "node",
@@ -13,11 +13,14 @@
       "noUnusedParameters": true,
       "outDir": "tempBuild",
       "paths": {
-         "function-curve-editor": ["../dist/FunctionCurveEditor.d.ts"]
+         "function-curve-editor": ["../../dist/FunctionCurveEditor.d.ts"]
       },
+      "removeComments": true,
       "strictFunctionTypes": true,
       "strictNullChecks": true,
       "target": "ES6"
    },
-   "files": ["app.ts"]
+   "include": [
+      "src/**/*"
+   ]
 }

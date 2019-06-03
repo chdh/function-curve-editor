@@ -1,4 +1,5 @@
 $$BackupControl.txt
+app.js
 build.bat
 node_modules
 tempBuild
