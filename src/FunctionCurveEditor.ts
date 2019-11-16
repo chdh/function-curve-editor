@@ -208,7 +208,9 @@ class PointerController {
 
    private wctx:             WidgetContext;
    private proximityRange:   number;
-   private dragStartPos:     Point | undefined;            // logical coordinates of starting point of drag action
+   private dragStartLPos:    Point | undefined;            // logical coordinates of starting point of drag action
+   private dragStartCPos:    Point | undefined;            // canvas coordinates of starting point of drag action
+   private dragCount:        number;
 
    constructor (wctx: WidgetContext, proximityRange: number) {
       this.wctx = wctx;
@@ -221,21 +223,25 @@ class PointerController {
       wctx.iState.selectedKnotNdx = knotNdx;
       wctx.iState.knotDragging = knotNdx != undefined;
       wctx.iState.planeDragging = knotNdx == undefined;
-      this.dragStartPos = lPoint;
+      this.dragStartLPos = lPoint;
+      this.dragStartCPos = cPoint;
+      this.dragCount = 0;
       wctx.iState.potentialKnotNdx = undefined;
       wctx.refresh(); }
 
    public processPointerMove (cPoint: Point) : boolean {
       const wctx = this.wctx;
       if (wctx.iState.knotDragging && wctx.iState.selectedKnotNdx != undefined) {
+         if (this.dragCount++ == 0) {
+            wctx.pushUndoHistoryState(); }
          const lPoint = wctx.mapCanvasToLogicalCoordinates(cPoint);
          const lPoint2 = this.snapToGrid(lPoint);
          wctx.moveKnot(wctx.iState.selectedKnotNdx, lPoint2);
          wctx.refresh();
          wctx.fireChangeEvent();
          return true; }
-       else if (wctx.iState.planeDragging && this.dragStartPos) {
-         wctx.moveCoordinatePlane(cPoint, this.dragStartPos);
+       else if (wctx.iState.planeDragging && this.dragStartLPos) {
+         wctx.moveCoordinatePlane(cPoint, this.dragStartLPos);
          wctx.refresh();
          return true; }
        else {
@@ -251,12 +257,27 @@ class PointerController {
          return false; }
       wctx.iState.knotDragging = false;
       wctx.iState.planeDragging = false;
-      this.dragStartPos = undefined;
+      this.dragStartLPos = undefined;
+      this.dragStartCPos = undefined;
       wctx.refresh();
       return true; }
 
+   public abortDragging() {
+      const wctx = this.wctx;
+      if (wctx.iState.knotDragging && this.dragCount > 0) {
+         wctx.undo();
+         wctx.fireChangeEvent(); }
+      if (wctx.iState.planeDragging && this.dragStartCPos && this.dragStartLPos) {
+         wctx.moveCoordinatePlane(this.dragStartCPos, this.dragStartLPos); }
+      wctx.iState.knotDragging = false;
+      wctx.iState.planeDragging = false;
+      this.dragStartLPos = undefined;
+      this.dragStartCPos = undefined;
+      wctx.refresh(); }
+
    public createKnot (cPoint: Point) {
       const wctx = this.wctx;
+      wctx.pushUndoHistoryState();
       const lPoint = wctx.mapCanvasToLogicalCoordinates(cPoint);
       const knotNdx = wctx.addKnot(lPoint);
       wctx.iState.selectedKnotNdx = knotNdx;
@@ -314,6 +335,9 @@ class MouseController {
       document.removeEventListener("mousemove", this.mouseMoveEventListener);
       wctx.canvas.removeEventListener("dblclick", this.dblClickEventListener);
       wctx.canvas.removeEventListener("wheel", this.wheelEventListener); }
+
+   public processEscKey() {
+      this.pointerController.abortDragging(); }
 
    private mouseDownEventListener = (event: MouseEvent) => {
       const wctx = this.wctx;
@@ -487,32 +511,51 @@ class KeyboardController {
       wctx.canvas.removeEventListener("keypress", this.keyPressEventListener); }
 
    private keyDownEventListener = (event: KeyboardEvent) => {
-      if (this.processKeyDown(event.key)) {
+      const keyName = genKeyName(event);
+      if (this.processKeyDown(keyName)) {
+         event.preventDefault();
          event.stopPropagation(); }};
 
    private keyPressEventListener = (event: KeyboardEvent) => {
-      if (this.processKeyPress(event.key)) {
+      const keyName = genKeyName(event);
+      if (this.processKeyPress(keyName)) {
+         event.preventDefault();
          event.stopPropagation(); }};
 
-   private processKeyDown (key: string) {
+   private processKeyDown (keyName: string) {
       const wctx = this.wctx;
-      switch (key) {
+      switch (keyName) {
          case "Backspace": case "Delete": {
             if (wctx.iState.selectedKnotNdx != undefined) {
                wctx.iState.knotDragging = false;
+               wctx.pushUndoHistoryState();
                wctx.deleteKnot(wctx.iState.selectedKnotNdx);
                wctx.refresh();
                wctx.fireChangeEvent(); }
-            return true; }}
-      return false; }
+            return true; }
+         case "Ctrl+z": case "Alt+Backspace": {
+            if (wctx.undo()) {
+               wctx.refresh();
+               wctx.fireChangeEvent(); }
+            return true; }
+         case "Ctrl+y": case "Ctrl+Shift+z": {
+            if (wctx.redo()) {
+               wctx.refresh();
+               wctx.fireChangeEvent(); }
+            return true; }
+         case "Escape": {
+            wctx.mouseController.processEscKey();
+            return true; }
+         default: {
+            return false; }}}
 
-   private processKeyPress (key: string) {
+   private processKeyPress (keyName: string) {
       const wctx = this.wctx;
       const eState = wctx.eState;
-      switch (key) {
+      switch (keyName) {
          case "+": case "-": case "x": case "X": case "y": case "Y": {
-            const fx = (key == '+' || key == 'X') ? Math.SQRT2 : (key == '-' || key == 'x') ? Math.SQRT1_2 : 1;
-            const fy = (key == '+' || key == 'Y') ? Math.SQRT2 : (key == '-' || key == 'y') ? Math.SQRT1_2 : 1;
+            const fx = (keyName == '+' || keyName == 'X') ? Math.SQRT2 : (keyName == '-' || keyName == 'x') ? Math.SQRT1_2 : 1;
+            const fy = (keyName == '+' || keyName == 'Y') ? Math.SQRT2 : (keyName == '-' || keyName == 'y') ? Math.SQRT1_2 : 1;
             wctx.zoom(fx, fy);
             wctx.refresh();
             return true; }
@@ -522,6 +565,7 @@ class KeyboardController {
             wctx.fireChangeEvent();
             return true; }
          case "c": {
+            wctx.pushUndoHistoryState();
             wctx.clearKnots();
             wctx.refresh();
             wctx.fireChangeEvent();
@@ -553,12 +597,22 @@ class KeyboardController {
              catch (e) {
                window.alert("Input could not be decoded. " + e);
                return; }
+            wctx.pushUndoHistoryState();
             wctx.replaceKnots(newKnots);
             wctx.refresh();
             wctx.fireChangeEvent();
             return true; }
          default: {
             return false; }}}}
+
+function genKeyName (event: KeyboardEvent) : string {
+   const s =
+      (event.altKey   ? "Alt+"   : "") +
+      (event.ctrlKey  ? "Ctrl+"  : "") +
+      (event.shiftKey && event.key.length > 1 ? "Shift+" : "") +
+      (event.metaKey  ? "Meta+"  : "") +
+      event.key;
+   return s; }
 
 //--- Internal widget context --------------------------------------------------
 
@@ -567,6 +621,15 @@ interface InteractionState {
    potentialKnotNdx:         number | undefined;           // index of potential target knot for mouse click (or undefined)
    knotDragging:             boolean;                      // true if the selected knot is beeing dragged
    planeDragging:            boolean; }                    // true if the coordinate plane is beeing dragged
+
+interface HistoryState {
+   undoStack:                Point[][];                    // old knot points
+   undoStackPos:             number; }                     // current position within undoStack
+      // Concept:
+      // - Only the knots are saved on the undo stack.
+      // - If undoStackPos == undoStack.length, the current state has changed and is not equal to the last entry.
+      // - If undoStackPos < undoStack.length, the current state is equal to undoStack[undoStackPos] and
+      //   the entries > undoStackPos are redo states.
 
 class WidgetContext {
 
@@ -582,6 +645,7 @@ class WidgetContext {
    public eState:            EditorState;                  // current editor state
    public initialEState:     EditorState;                  // last set initial editor state
    public iState:            InteractionState;
+   public hState:            HistoryState;
 
    constructor (canvas: HTMLCanvasElement) {
       this.canvas = canvas;
@@ -610,7 +674,8 @@ class WidgetContext {
    public setEditorState (eState: EditorState) {
       this.eState = cloneEditorState(eState);
       this.initialEState = cloneEditorState(eState);
-      this.resetInteractionState(); }
+      this.resetInteractionState();
+      this.resetHistoryState(); }
 
    public getEditorState() : EditorState {
       return cloneEditorState(this.eState); }
@@ -629,6 +694,38 @@ class WidgetContext {
    public clearKnots() {
       this.eState.knots = Array();
       this.resetInteractionState(); }
+
+   private resetHistoryState() {
+      this.hState = {
+         undoStack:    [],
+         undoStackPos: 0 }; }
+
+   // Must be called immediatelly before the current state (knots) is changed.
+   public pushUndoHistoryState() {
+      const hState = this.hState;
+      hState.undoStack.length = hState.undoStackPos;                 // get rid of redo entries
+      hState.undoStack.push(this.eState.knots.slice());              // push knots to undo stack
+      hState.undoStackPos = hState.undoStack.length; }
+
+   public undo() : boolean {
+      const hState = this.hState;
+      if (hState.undoStackPos < 1) {                                 // no more undo entries available
+         return false; }
+      if (hState.undoStackPos == hState.undoStack.length) {
+         hState.undoStack.push(this.eState.knots.slice()); }
+      hState.undoStackPos--;
+      this.eState.knots = hState.undoStack[hState.undoStackPos].slice();
+      this.resetInteractionState();
+      return true; }
+
+   public redo() : boolean {
+      const hState = this.hState;
+      if (hState.undoStackPos >= hState.undoStack.length - 1) {      // no more redo entries available
+         return false; }
+      hState.undoStackPos++;
+      this.eState.knots = hState.undoStack[hState.undoStackPos].slice();
+      this.resetInteractionState();
+      return true; }
 
    public mapLogicalToCanvasXCoordinate (lx: number) : number {
       return (lx - this.eState.xMin) * this.canvas.width / (this.eState.xMax - this.eState.xMin); }
@@ -801,21 +898,19 @@ export interface EditorState {
 // Clones and adds missing fields.
 function cloneEditorState (eState: EditorState) : EditorState {
    const eState2 = <EditorState>{};
-   eState2.knots               = get(eState.knots, []).slice();
-   eState2.xMin                = get(eState.xMin, 0);
-   eState2.xMax                = get(eState.xMax, 1);
-   eState2.yMin                = get(eState.yMin, 0);
-   eState2.yMax                = get(eState.yMax, 1);
-   eState2.extendedDomain      = get(eState.extendedDomain, true);
+   eState2.knots               = (eState.knots ?? []).slice();
+   eState2.xMin                = eState.xMin ?? 0;
+   eState2.xMax                = eState.xMax ?? 1;
+   eState2.yMin                = eState.yMin ?? 0;
+   eState2.yMax                = eState.yMax ?? 1;
+   eState2.extendedDomain      = eState.extendedDomain ?? true;
    eState2.relevantXMin        = eState.relevantXMin;
    eState2.relevantXMax        = eState.relevantXMax;
-   eState2.gridEnabled         = get(eState.gridEnabled, true);
-   eState2.snapToGridEnabled   = get(eState.snapToGridEnabled, true);
-   eState2.interpolationMethod = get(eState.interpolationMethod, "akima");
-   eState2.primaryZoomMode     = get(eState.primaryZoomMode, ZoomMode.xy);
-   return eState2;
-   function get<T> (value: T, defaultValue: T) : T {
-      return (value === undefined) ? defaultValue : value; }}
+   eState2.gridEnabled         = eState.gridEnabled ?? true;
+   eState2.snapToGridEnabled   = eState.snapToGridEnabled ?? true;
+   eState2.interpolationMethod = eState.interpolationMethod ?? "akima";
+   eState2.primaryZoomMode     = eState.primaryZoomMode ?? ZoomMode.xy;
+   return eState2; }
 
 //--- Widget -------------------------------------------------------------------
 
@@ -882,6 +977,9 @@ export class Widget {
          "click or tap on knot",           "select a knot",
          "Delete / Backspace",             "delete the selected knot",
          "double-click or double-tap",     "create a new knot",
+         "Esc",                            "abort moving",
+         "Ctrl+Z / Alt+Backspace",         "undo",
+         "Ctrl+Y / Ctrl+Shift+Z",          "redo",
          "mouse wheel",                    "zoom " + primaryZoomAxis,
          "shift + mouse wheel",            "zoom y-axis",
          "ctrl + mouse wheel",             "zoom both axes",

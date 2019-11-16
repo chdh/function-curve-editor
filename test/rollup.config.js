@@ -1,4 +1,4 @@
-import alias from "rollup-plugin-alias";
+import alias from "@rollup/plugin-alias";
 import resolve from "rollup-plugin-node-resolve";
 
 export default {
@@ -10,7 +10,9 @@ export default {
    plugins: [
       resolve(),
       alias({
-         "function-curve-editor": "../dist/FunctionCurveEditor.js"
+         entries: {
+            "function-curve-editor": "../dist/FunctionCurveEditor.js"
+         }
       })
    ]
 };
