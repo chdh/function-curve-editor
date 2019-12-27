@@ -313,7 +313,7 @@ class PointerController {
       this.dragStartCPos = cPoint;
       this.dragCount = 0;
       wctx.iState.potentialKnotNdx = undefined;
-      wctx.refresh(); }
+      wctx.requestRefresh(); }
 
    private abortDragging() {
       const wctx = this.wctx;
@@ -322,21 +322,17 @@ class PointerController {
          wctx.fireChangeEvent(); }
       if (wctx.iState.planeDragging && this.dragStartCPos && this.dragStartLPos) {
          wctx.moveCoordinatePlane(this.dragStartCPos, this.dragStartLPos); }
-      wctx.iState.knotDragging = false;
-      wctx.iState.planeDragging = false;
-      this.dragStartLPos = undefined;
-      this.dragStartCPos = undefined;
-      wctx.refresh(); }
+      this.stopDragging();
+      wctx.requestRefresh(); }
 
    private stopDragging() {
       const wctx = this.wctx;
-      const wasDragging = wctx.iState.knotDragging || wctx.iState.planeDragging;
-      wctx.iState.knotDragging = false;
-      wctx.iState.planeDragging = false;
+      if (wctx.iState.knotDragging || wctx.iState.planeDragging) {
+         wctx.requestRefresh(); }
       this.dragStartLPos = undefined;
       this.dragStartCPos = undefined;
-      if (wasDragging) {
-         wctx.refresh(); }}
+      wctx.iState.knotDragging = false;
+      wctx.iState.planeDragging = false; }
 
    private drag() {
       const wctx = this.wctx;
@@ -347,11 +343,11 @@ class PointerController {
          const lPoint = wctx.mapCanvasToLogicalCoordinates(cPoint);
          const lPoint2 = this.snapToGrid(lPoint);
          wctx.moveKnot(wctx.iState.selectedKnotNdx, lPoint2);
-         wctx.refresh();
+         wctx.requestRefresh();
          wctx.fireChangeEvent(); }
        else if (wctx.iState.planeDragging && this.dragStartLPos) {
          wctx.moveCoordinatePlane(cPoint, this.dragStartLPos);
-         wctx.refresh(); }}
+         wctx.requestRefresh(); }}
 
    private startZooming() {
       const wctx = this.wctx;
@@ -367,8 +363,9 @@ class PointerController {
       this.zoomStartDist = PointUtils.computeDistance(cPoint1, cPoint2);
       this.zoomStartFactorX = wctx.getZoomFactor(true);
       this.zoomStartFactorY = wctx.getZoomFactor(false);
-      this.zoomX = xDist * 2 > yDist;
-      this.zoomY = yDist * 2 > xDist;
+      const t = Math.tan(Math.PI / 8);
+      this.zoomX = xDist > t * yDist;
+      this.zoomY = yDist > t * xDist;
       this.zooming = true; }
 
    private stopZooming() {
@@ -390,7 +387,7 @@ class PointerController {
       if (this.zoomY) {
          eState.yMax = eState.yMin + wctx.canvas.height / (this.zoomStartFactorY * f); }
       wctx.moveCoordinatePlane(newCCenter, this.zoomLCenter);
-      wctx.refresh(); }
+      wctx.requestRefresh(); }
 
    private wheelEventListener = (event: WheelEvent) => {
       const wctx = this.wctx;
@@ -417,7 +414,7 @@ class PointerController {
          default: {
             fx = f; fy = f; }}
       wctx.zoom(fx, fy, cPoint);
-      wctx.refresh();
+      wctx.requestRefresh();
       event.preventDefault(); };
 
    private processDoubleClickTouch() {
@@ -440,7 +437,7 @@ class PointerController {
       wctx.iState.potentialKnotNdx = knotNdx;
       wctx.iState.knotDragging = false;
       wctx.iState.planeDragging = false;
-      wctx.refresh();
+      wctx.requestRefresh();
       wctx.fireChangeEvent(); }
 
    private updatePotentialKnot (event: PointerEvent) {
@@ -449,7 +446,7 @@ class PointerController {
       const knotNdx = this.findNearKnot(cPoint, event.pointerType);
       if (wctx.iState.potentialKnotNdx != knotNdx) {
         wctx.iState.potentialKnotNdx = knotNdx;
-        wctx.refresh(); }}
+        wctx.requestRefresh(); }}
 
    private findNearKnot (cPoint: Point, pointerType: string) : number | undefined {
       const wctx = this.wctx;
@@ -522,17 +519,17 @@ class KeyboardController {
                wctx.iState.knotDragging = false;
                wctx.pushUndoHistoryState();
                wctx.deleteKnot(wctx.iState.selectedKnotNdx);
-               wctx.refresh();
+               wctx.requestRefresh();
                wctx.fireChangeEvent(); }
             return true; }
          case "Ctrl+z": case "Alt+Backspace": {
             if (wctx.undo()) {
-               wctx.refresh();
+               wctx.requestRefresh();
                wctx.fireChangeEvent(); }
             return true; }
          case "Ctrl+y": case "Ctrl+Z": {
             if (wctx.redo()) {
-               wctx.refresh();
+               wctx.requestRefresh();
                wctx.fireChangeEvent(); }
             return true; }
          case "Escape": {
@@ -549,33 +546,33 @@ class KeyboardController {
             const fx = (keyName == '+' || keyName == 'X') ? Math.SQRT2 : (keyName == '-' || keyName == 'x') ? Math.SQRT1_2 : 1;
             const fy = (keyName == '+' || keyName == 'Y') ? Math.SQRT2 : (keyName == '-' || keyName == 'y') ? Math.SQRT1_2 : 1;
             wctx.zoom(fx, fy);
-            wctx.refresh();
+            wctx.requestRefresh();
             return true; }
          case "r": {
             wctx.reset();
-            wctx.refresh();
+            wctx.requestRefresh();
             wctx.fireChangeEvent();
             return true; }
          case "c": {
             wctx.pushUndoHistoryState();
             wctx.clearKnots();
-            wctx.refresh();
+            wctx.requestRefresh();
             wctx.fireChangeEvent();
             return true; }
          case "e": {
             eState.extendedDomain = !eState.extendedDomain;
-            wctx.refresh();
+            wctx.requestRefresh();
             return true; }
          case "g": {
             eState.gridEnabled = !eState.gridEnabled;
-            wctx.refresh();
+            wctx.requestRefresh();
             return true; }
          case "s": {
             eState.snapToGridEnabled = !eState.snapToGridEnabled;
             return true; }
          case "l": {
             eState.interpolationMethod = (eState.interpolationMethod == "linear") ? "akima" : "linear";
-            wctx.refresh();
+            wctx.requestRefresh();
             wctx.fireChangeEvent();
             return true; }
          case "k": {
@@ -591,7 +588,7 @@ class KeyboardController {
                return; }
             wctx.pushUndoHistoryState();
             wctx.replaceKnots(newKnots);
-            wctx.refresh();
+            wctx.requestRefresh();
             wctx.fireChangeEvent();
             return true; }
          default: {
@@ -609,14 +606,14 @@ function genKeyName (event: KeyboardEvent) : string {
 //--- Internal widget context --------------------------------------------------
 
 interface InteractionState {
-   selectedKnotNdx:          number | undefined;           // index of currently selected knot or undefined
-   potentialKnotNdx:         number | undefined;           // index of potential target knot for mouse click (or undefined)
-   knotDragging:             boolean;                      // true if the selected knot is beeing dragged
-   planeDragging:            boolean; }                    // true if the coordinate plane is beeing dragged
+   selectedKnotNdx:                    number | undefined;           // index of currently selected knot or undefined
+   potentialKnotNdx:                   number | undefined;           // index of potential target knot for mouse click (or undefined)
+   knotDragging:                       boolean;                      // true if the selected knot is beeing dragged
+   planeDragging:                      boolean; }                    // true if the coordinate plane is beeing dragged
 
 interface HistoryState {
-   undoStack:                Point[][];                    // old knot points
-   undoStackPos:             number; }                     // current position within undoStack
+   undoStack:                          Point[][];                    // old knot points
+   undoStackPos:                       number; }                     // current position within undoStack
       // Concept:
       // - Only the knots are saved on the undo stack.
       // - If undoStackPos == undoStack.length, the current state has changed and is not equal to the last entry.
@@ -625,23 +622,25 @@ interface HistoryState {
 
 class WidgetContext {
 
-   public plotter:           FunctionPlotter;
-   public pointerController: PointerController;
-   public kbController:      KeyboardController;
+   public plotter:                     FunctionPlotter;
+   public pointerController:           PointerController;
+   public kbController:                KeyboardController;
 
-   public canvas:            HTMLCanvasElement;            // the DOM canvas element
-   public eventTarget:       EventTarget;
-   public isConnected:       boolean;
+   public canvas:                      HTMLCanvasElement;            // the DOM canvas element
+   public eventTarget:                 EventTarget;
+   public isConnected:                 boolean;
+   private animationFramePending:      boolean;
 
-   public eState:            EditorState;                  // current editor state
-   public initialEState:     EditorState;                  // last set initial editor state
-   public iState:            InteractionState;
-   public hState:            HistoryState;
+   public eState:                      EditorState;                  // current editor state
+   public initialEState:               EditorState;                  // last set initial editor state
+   public iState:                      InteractionState;
+   public hState:                      HistoryState;
 
    constructor (canvas: HTMLCanvasElement) {
       this.canvas = canvas;
       this.eventTarget = new EventTargetPolyfill();
       this.isConnected = false;
+      this.animationFramePending = false;
       this.setEditorState(<EditorState>{}); }
 
    public setConnected (connected: boolean) {
@@ -654,7 +653,8 @@ class WidgetContext {
        else {
          this.pointerController.dispose();
          this.kbController.dispose(); }
-      this.isConnected = connected; }
+      this.isConnected = connected;
+      this.requestRefresh(); }
 
    public adjustBackingBitmapResolution() {
       this.canvas.width = this.canvas.clientWidth || 200;
@@ -664,7 +664,8 @@ class WidgetContext {
       this.eState = cloneEditorState(eState);
       this.initialEState = cloneEditorState(eState);
       this.resetInteractionState();
-      this.resetHistoryState(); }
+      this.resetHistoryState();
+      this.requestRefresh(); }
 
    public getEditorState() : EditorState {
       return cloneEditorState(this.eState); }
@@ -851,8 +852,20 @@ class WidgetContext {
          yVals[i] = knots[i].y; }
       return createInterpolatorWithFallback(this.eState.interpolationMethod, xVals, yVals); }
 
+   public requestRefresh() {
+      if (this.animationFramePending || !this.isConnected) {
+         return; }
+      requestAnimationFrame(this.animationFrameHandler);
+      this.animationFramePending = true; }
+
+   private animationFrameHandler = () => {
+      this.animationFramePending = false;
+      if (!this.isConnected) {
+         return; }
+      this.refresh(); }
+
    // Re-paints the canvas and updates the cursor.
-   public refresh() {
+   private refresh() {
       this.plotter.paint();
       this.updateCanvasCursorStyle(); }
 
@@ -925,8 +938,7 @@ export class Widget {
       const wctx = this.wctx;
       this.wctx.setConnected(connected);
       if (connected) {
-         wctx.adjustBackingBitmapResolution();
-         wctx.refresh(); }}
+         wctx.adjustBackingBitmapResolution(); }}
 
    // Registers an event listener.
    // Currently only the "change" event is supported.
@@ -947,9 +959,7 @@ export class Widget {
    // Updates the current state of the function curve editor.
    public setEditorState (eState: EditorState) {
       const wctx = this.wctx;
-      wctx.setEditorState(eState);
-      if (wctx.isConnected) {
-         wctx.refresh(); }}
+      wctx.setEditorState(eState); }
 
    // Returns the current graph function.
    // The returned JavaScript function maps each x value to an y value.
