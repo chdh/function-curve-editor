@@ -10,7 +10,8 @@ function-curve-editor {
    height: 500px;
    border: 1px solid black;
    margin-top: 5px;
-   margin-bottom: 20px; }
+   margin-bottom: 20px;
+   touch-action: none; }
 
 div.buttons {
    color: #07C;

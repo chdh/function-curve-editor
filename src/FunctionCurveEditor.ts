@@ -203,23 +203,109 @@ class FunctionPlotter {
 
 //--- Pointer controller -------------------------------------------------------
 
-// Common high-level routines for mouse and touch.
+// Controller for mouse and touch input.
 class PointerController {
 
    private wctx:             WidgetContext;
-   private proximityRange:   number;
+   private pointers:         Map<number,PointerEvent>;     // maps IDs of active pointers to last pointer events
    private dragStartLPos:    Point | undefined;            // logical coordinates of starting point of drag action
    private dragStartCPos:    Point | undefined;            // canvas coordinates of starting point of drag action
    private dragCount:        number;
+   private lastTouchTime:    number;
+   private zooming:          boolean = false;
+   private zoomLCenter:      Point;                        // zoom center point in logical coordinates
+   private zoomStartDist:    number;
+   private zoomStartFactorX: number;
+   private zoomStartFactorY: number;
+   private zoomX:            boolean;                      // true when zooming in X direction
+   private zoomY:            boolean;                      // true when zooming in y direction
 
-   constructor (wctx: WidgetContext, proximityRange: number) {
+   constructor (wctx: WidgetContext) {
       this.wctx = wctx;
-      this.proximityRange = proximityRange; }
+      this.pointers = new Map();
+      wctx.canvas.addEventListener("pointerdown",   this.pointerDownEventListener);
+      wctx.canvas.addEventListener("pointerup",     this.pointerUpEventListener);
+      wctx.canvas.addEventListener("pointercancel", this.pointerUpEventListener);
+      wctx.canvas.addEventListener("pointermove",   this.pointerMoveEventListener);
+      wctx.canvas.addEventListener("dblclick",      this.dblClickEventListener);
+      wctx.canvas.addEventListener("wheel",         this.wheelEventListener); }
 
-   public startDragging (cPoint: Point) {
+   public dispose() {
       const wctx = this.wctx;
+      wctx.canvas.removeEventListener("pointerdown",   this.pointerDownEventListener);
+      wctx.canvas.removeEventListener("pointerup",     this.pointerUpEventListener);
+      wctx.canvas.removeEventListener("pointercancel", this.pointerUpEventListener);
+      wctx.canvas.removeEventListener("pointermove",   this.pointerMoveEventListener);
+      wctx.canvas.removeEventListener("dblclick",      this.dblClickEventListener);
+      wctx.canvas.removeEventListener("wheel",         this.wheelEventListener);
+      this.releaseAllPointers(); }
+
+   public processEscKey() {
+      this.abortDragging(); }
+
+   private pointerDownEventListener = (event: PointerEvent) => {
+      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || (event.pointerType == "mouse" && event.button != 0)) {
+         return; }
+      this.trackPointer(event);
+      if ((event.pointerType == "touch" || event.pointerType == "pen") && this.pointers.size == 1) { // detect double-click with touch or pen
+         if (this.lastTouchTime > 0 && performance.now() - this.lastTouchTime <= 300) { // double-click
+            this.lastTouchTime = 0;
+            this.processDoubleClickTouch();
+            event.preventDefault();
+            return; }
+         this.lastTouchTime = performance.now(); }
+      this.switchMode();
+      event.preventDefault(); };
+
+   private pointerUpEventListener = (event: PointerEvent) => {
+      this.releasePointer(event.pointerId);
+      this.switchMode();
+      event.preventDefault(); };
+
+   private switchMode() {
+      const wctx = this.wctx;
+      this.stopDragging();
+      this.stopZooming();
+      if (this.pointers.size == 1) {                       // left click or single touch
+         this.startDragging();
+         wctx.canvas.focus(); }
+       else if (this.pointers.size == 2) {                 // zoom gesture
+         this.startZooming(); }}
+
+   private pointerMoveEventListener = (event: PointerEvent) => {
+      if (!this.pointers.has(event.pointerId)) {
+         this.updatePotentialKnot(event);
+         return; }
+      this.trackPointer(event);
+      if (this.pointers.size == 1) {
+         this.drag(); }
+       else if (this.pointers.size == 2 && this.zooming) {
+         this.zoom(); }
+      event.preventDefault(); };
+
+   private trackPointer (event: PointerEvent) {
+      const wctx = this.wctx;
+      const pointerId = event.pointerId;
+      if (!this.pointers.has(pointerId)) {
+         wctx.canvas.setPointerCapture(pointerId); }
+      this.pointers.set(pointerId, event); }
+
+   private releasePointer (pointerId: number) {
+      const wctx = this.wctx;
+      this.pointers.delete(pointerId);
+      wctx.canvas.releasePointerCapture(pointerId); }
+
+   private releaseAllPointers() {
+      while (this.pointers.size > 0) {
+         const pointerId = this.pointers.keys().next().value;
+         this.releasePointer(pointerId); }}
+
+   private startDragging() {
+      const wctx = this.wctx;
+      const cPoint = this.getCanvasCoordinates();
       const lPoint = wctx.mapCanvasToLogicalCoordinates(cPoint);
-      const knotNdx = this.findNearKnot(cPoint);
+      const pointerType = this.pointers.values().next().value.pointerType;
+      const knotNdx = this.findNearKnot(cPoint, pointerType);
       wctx.iState.selectedKnotNdx = knotNdx;
       wctx.iState.knotDragging = knotNdx != undefined;
       wctx.iState.planeDragging = knotNdx == undefined;
@@ -229,40 +315,7 @@ class PointerController {
       wctx.iState.potentialKnotNdx = undefined;
       wctx.refresh(); }
 
-   public processPointerMove (cPoint: Point) : boolean {
-      const wctx = this.wctx;
-      if (wctx.iState.knotDragging && wctx.iState.selectedKnotNdx != undefined) {
-         if (this.dragCount++ == 0) {
-            wctx.pushUndoHistoryState(); }
-         const lPoint = wctx.mapCanvasToLogicalCoordinates(cPoint);
-         const lPoint2 = this.snapToGrid(lPoint);
-         wctx.moveKnot(wctx.iState.selectedKnotNdx, lPoint2);
-         wctx.refresh();
-         wctx.fireChangeEvent();
-         return true; }
-       else if (wctx.iState.planeDragging && this.dragStartLPos) {
-         wctx.moveCoordinatePlane(cPoint, this.dragStartLPos);
-         wctx.refresh();
-         return true; }
-       else {
-         const knotNdx = this.findNearKnot(cPoint);
-         if (wctx.iState.potentialKnotNdx != knotNdx) {
-           wctx.iState.potentialKnotNdx = knotNdx;
-           wctx.refresh(); }}
-      return false; }
-
-   public stopDragging() : boolean {
-      const wctx = this.wctx;
-      if (!wctx.iState.knotDragging && !wctx.iState.planeDragging) {
-         return false; }
-      wctx.iState.knotDragging = false;
-      wctx.iState.planeDragging = false;
-      this.dragStartLPos = undefined;
-      this.dragStartCPos = undefined;
-      wctx.refresh();
-      return true; }
-
-   public abortDragging() {
+   private abortDragging() {
       const wctx = this.wctx;
       if (wctx.iState.knotDragging && this.dragCount > 0) {
          wctx.undo();
@@ -275,92 +328,69 @@ class PointerController {
       this.dragStartCPos = undefined;
       wctx.refresh(); }
 
-   public createKnot (cPoint: Point) {
+   private stopDragging() {
       const wctx = this.wctx;
-      wctx.pushUndoHistoryState();
-      const lPoint = wctx.mapCanvasToLogicalCoordinates(cPoint);
-      const knotNdx = wctx.addKnot(lPoint);
-      wctx.iState.selectedKnotNdx = knotNdx;
-      wctx.iState.potentialKnotNdx = knotNdx;
+      const wasDragging = wctx.iState.knotDragging || wctx.iState.planeDragging;
       wctx.iState.knotDragging = false;
       wctx.iState.planeDragging = false;
-      wctx.refresh();
-      wctx.fireChangeEvent(); }
+      this.dragStartLPos = undefined;
+      this.dragStartCPos = undefined;
+      if (wasDragging) {
+         wctx.refresh(); }}
 
-   private findNearKnot (cPoint: Point) : number | undefined {
+   private drag() {
       const wctx = this.wctx;
-      const r = wctx.findNearestKnot(cPoint);
-      return (r && r.distance <= this.proximityRange) ? r.knotNdx : undefined; }
+      const cPoint = this.getCanvasCoordinates();
+      if (wctx.iState.knotDragging && wctx.iState.selectedKnotNdx != undefined) {
+         if (this.dragCount++ == 0) {
+            wctx.pushUndoHistoryState(); }
+         const lPoint = wctx.mapCanvasToLogicalCoordinates(cPoint);
+         const lPoint2 = this.snapToGrid(lPoint);
+         wctx.moveKnot(wctx.iState.selectedKnotNdx, lPoint2);
+         wctx.refresh();
+         wctx.fireChangeEvent(); }
+       else if (wctx.iState.planeDragging && this.dragStartLPos) {
+         wctx.moveCoordinatePlane(cPoint, this.dragStartLPos);
+         wctx.refresh(); }}
 
-   private snapToGrid (lPoint: Point) : Point {
+   private startZooming() {
       const wctx = this.wctx;
-      if (!wctx.eState.gridEnabled || !wctx.eState.snapToGridEnabled) {
-         return lPoint; }
-      return {x: this.snapToGrid2(lPoint.x, true), y: this.snapToGrid2(lPoint.y, false)}; }
+      const pointerValues = this.pointers.values();
+      const event1 = pointerValues.next().value;
+      const event2 = pointerValues.next().value;
+      const cPoint1 = this.getCanvasCoordinatesFromEvent(event1);
+      const cPoint2 = this.getCanvasCoordinatesFromEvent(event2);
+      const cCenter = PointUtils.computeCenter(cPoint1, cPoint2);
+      const xDist = Math.abs(cPoint1.x - cPoint2.x);
+      const yDist = Math.abs(cPoint1.y - cPoint2.y);
+      this.zoomLCenter = wctx.mapCanvasToLogicalCoordinates(cCenter);
+      this.zoomStartDist = PointUtils.computeDistance(cPoint1, cPoint2);
+      this.zoomStartFactorX = wctx.getZoomFactor(true);
+      this.zoomStartFactorY = wctx.getZoomFactor(false);
+      this.zoomX = xDist * 2 > yDist;
+      this.zoomY = yDist * 2 > xDist;
+      this.zooming = true; }
 
-   private snapToGrid2 (lPos: number, xy: boolean) {
-      const maxDistance = 5;
+   private stopZooming() {
+      this.zooming = false; }
+
+   private zoom() {
       const wctx = this.wctx;
-      const gp = wctx.getGridParms(xy);
-      if (!gp) {
-         return lPos; }
-      const gridSpace = gp.space * gp.span;
-      const gridPos = Math.round(lPos / gridSpace) * gridSpace;
-      const lDist = Math.abs(lPos - gridPos);
-      const cDist = lDist * wctx.getZoomFactor(xy);
-      if (cDist > maxDistance) {
-         return lPos; }
-      return gridPos; }}
-
-//--- Mouse controller ---------------------------------------------------------
-
-class MouseController {
-
-   private wctx:              WidgetContext;
-   private pointerController: PointerController;
-
-   constructor (wctx: WidgetContext) {
-      this.wctx = wctx;
-      this.pointerController = new PointerController(wctx, 15);
-      wctx.canvas.addEventListener("mousedown", this.mouseDownEventListener);
-      document.addEventListener("mouseup", this.mouseUpEventListener);
-      document.addEventListener("mousemove", this.mouseMoveEventListener);
-      wctx.canvas.addEventListener("dblclick", this.dblClickEventListener);
-      wctx.canvas.addEventListener("wheel", this.wheelEventListener); }
-
-   public dispose() {
-      const wctx = this.wctx;
-      wctx.canvas.removeEventListener("mousedown", this.mouseDownEventListener);
-      document.removeEventListener("mouseup", this.mouseUpEventListener);
-      document.removeEventListener("mousemove", this.mouseMoveEventListener);
-      wctx.canvas.removeEventListener("dblclick", this.dblClickEventListener);
-      wctx.canvas.removeEventListener("wheel", this.wheelEventListener); }
-
-   public processEscKey() {
-      this.pointerController.abortDragging(); }
-
-   private mouseDownEventListener = (event: MouseEvent) => {
-      const wctx = this.wctx;
-      if (event.button == 0) {
-         const cPoint = this.getCanvasCoordinatesFromEvent(event);
-         this.pointerController.startDragging(cPoint);
-         event.preventDefault();
-         wctx.canvas.focus(); }};
-
-   private mouseUpEventListener = (event: MouseEvent) => {
-      if (this.pointerController.stopDragging()) {
-         event.preventDefault(); }};
-
-   private mouseMoveEventListener = (event: MouseEvent) => {
-      const cPoint = this.getCanvasCoordinatesFromEvent(event);
-      if (this.pointerController.processPointerMove(cPoint)) {
-         event.preventDefault(); }};
-
-   private dblClickEventListener = (event: MouseEvent) => {
-      if (event.button == 0) {
-         const cPoint = this.getCanvasCoordinatesFromEvent(event);
-         this.pointerController.createKnot(cPoint);
-         event.preventDefault(); }};
+      const eState = wctx.eState;
+      const pointerValues = this.pointers.values();
+      const event1 = pointerValues.next().value;
+      const event2 = pointerValues.next().value;
+      const cPoint1 = this.getCanvasCoordinatesFromEvent(event1);
+      const cPoint2 = this.getCanvasCoordinatesFromEvent(event2);
+      const newCCenter = PointUtils.computeCenter(cPoint1, cPoint2);
+      const newDist = PointUtils.computeDistance(cPoint1, cPoint2);
+      const f = newDist / this.zoomStartDist;
+      if (this.zoomX) {
+         eState.xMax = eState.xMin + wctx.canvas.width / (this.zoomStartFactorX * f); }
+      if (this.zoomY) {
+         eState.yMax = eState.yMin + wctx.canvas.height / (this.zoomStartFactorY * f); }
+      wctx.moveCoordinatePlane(newCCenter, this.zoomLCenter);
+      wctx.refresh(); }
 
    private wheelEventListener = (event: WheelEvent) => {
       const wctx = this.wctx;
@@ -390,109 +420,73 @@ class MouseController {
       wctx.refresh();
       event.preventDefault(); };
 
+   private processDoubleClickTouch() {
+      const cPoint = this.getCanvasCoordinates();
+      this.createKnot(cPoint); }
+
+   private dblClickEventListener = (event: MouseEvent) => {
+      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.button != 0) {
+         return; }
+      const cPoint = this.getCanvasCoordinatesFromEvent(event);
+      this.createKnot(cPoint);
+      event.preventDefault(); };
+
+   private createKnot (cPoint: Point) {
+      const wctx = this.wctx;
+      wctx.pushUndoHistoryState();
+      const lPoint = wctx.mapCanvasToLogicalCoordinates(cPoint);
+      const knotNdx = wctx.addKnot(lPoint);
+      wctx.iState.selectedKnotNdx = knotNdx;
+      wctx.iState.potentialKnotNdx = knotNdx;
+      wctx.iState.knotDragging = false;
+      wctx.iState.planeDragging = false;
+      wctx.refresh();
+      wctx.fireChangeEvent(); }
+
+   private updatePotentialKnot (event: PointerEvent) {
+      const wctx = this.wctx;
+      const cPoint = this.getCanvasCoordinatesFromEvent(event);
+      const knotNdx = this.findNearKnot(cPoint, event.pointerType);
+      if (wctx.iState.potentialKnotNdx != knotNdx) {
+        wctx.iState.potentialKnotNdx = knotNdx;
+        wctx.refresh(); }}
+
+   private findNearKnot (cPoint: Point, pointerType: string) : number | undefined {
+      const wctx = this.wctx;
+      const r = wctx.findNearestKnot(cPoint);
+      const proximityRange = (pointerType == "touch") ? 30 : 15;
+      return (r && r.distance <= proximityRange) ? r.knotNdx : undefined; }
+
+   private snapToGrid (lPoint: Point) : Point {
+      const wctx = this.wctx;
+      if (!wctx.eState.gridEnabled || !wctx.eState.snapToGridEnabled) {
+         return lPoint; }
+      return {x: this.snapToGrid2(lPoint.x, true), y: this.snapToGrid2(lPoint.y, false)}; }
+
+   private snapToGrid2 (lPos: number, xy: boolean) {
+      const maxDistance = 5;
+      const wctx = this.wctx;
+      const gp = wctx.getGridParms(xy);
+      if (!gp) {
+         return lPos; }
+      const gridSpace = gp.space * gp.span;
+      const gridPos = Math.round(lPos / gridSpace) * gridSpace;
+      const lDist = Math.abs(lPos - gridPos);
+      const cDist = lDist * wctx.getZoomFactor(xy);
+      if (cDist > maxDistance) {
+         return lPos; }
+      return gridPos; }
+
+   // Returns the coordinates of the first pointer.
+   private getCanvasCoordinates() : Point {
+      if (this.pointers.size < 1) {
+         throw new Error("No active pointers."); }
+      const event = this.pointers.values().next().value;
+      return this.getCanvasCoordinatesFromEvent(event); }
+
    private getCanvasCoordinatesFromEvent (event: MouseEvent) : Point {
       const wctx = this.wctx;
       return wctx.mapViewportToCanvasCoordinates({x: event.clientX, y: event.clientY}); }}
-
-//--- Touch controller ---------------------------------------------------------
-
-class TouchController {
-
-   private wctx:             WidgetContext;
-   private pointerController: PointerController;
-   private lastTouchTime:    number;
-   private zooming:          boolean = false;
-   private zoomLCenter:      Point;
-   private zoomStartDist:    number;
-   private zoomStartFactorX: number;
-   private zoomStartFactorY: number;
-   private zoomX:            boolean;
-   private zoomY:            boolean;
-
-   constructor (wctx: WidgetContext) {
-      this.wctx = wctx;
-      this.pointerController = new PointerController(wctx, 30);
-      wctx.canvas.addEventListener("touchstart", this.touchStartEventListener);
-      wctx.canvas.addEventListener("touchmove", this.touchMoveEventListener);
-      wctx.canvas.addEventListener("touchend", this.touchEndEventListener);
-      wctx.canvas.addEventListener("touchcancel", this.touchEndEventListener); }
-
-   public dispose() {
-      const wctx = this.wctx;
-      wctx.canvas.removeEventListener("touchstart", this.touchStartEventListener);
-      wctx.canvas.removeEventListener("touchmove", this.touchMoveEventListener);
-      wctx.canvas.removeEventListener("touchend", this.touchEndEventListener);
-      wctx.canvas.removeEventListener("touchcancel", this.touchEndEventListener); }
-
-   private touchStartEventListener = (event: TouchEvent) => {
-      const touches = event.touches;
-      if (touches.length == 1) {
-         const touch = touches[0];
-         const cPoint = this.getCanvasCoordinatesFromTouch(touch);
-         if (this.lastTouchTime > 0 && performance.now() - this.lastTouchTime <= 300) { // double touch
-            this.lastTouchTime = 0;
-            this.pointerController.createKnot(cPoint); }
-          else {                                           // single touch
-            this.lastTouchTime = performance.now();
-            this.pointerController.startDragging(cPoint); }
-         event.preventDefault(); }
-       else if (touches.length == 2) {                     // zoom gesture
-         this.startZooming(touches);
-         event.preventDefault(); }};
-
-   private touchMoveEventListener = (event: TouchEvent) => {
-      const touches = event.touches;
-      if (touches.length == 1) {
-         const touch = touches[0];
-         const cPoint = this.getCanvasCoordinatesFromTouch(touch);
-         if (this.pointerController.processPointerMove(cPoint)) {
-            event.preventDefault(); }}
-       else if (touches.length == 2 && this.zooming) {
-         this.zoom(touches);
-         event.preventDefault(); }};
-
-   private touchEndEventListener = (event: TouchEvent) => {
-      if (this.pointerController.stopDragging() || this.zooming) {
-         this.zooming = false;
-         event.preventDefault(); }};
-
-   private getCanvasCoordinatesFromTouch (touch: Touch) : Point {
-      const wctx = this.wctx;
-      return wctx.mapViewportToCanvasCoordinates({x: touch.clientX, y: touch.clientY}); }
-
-   private startZooming (touches: TouchList) {
-      const wctx = this.wctx;
-      const touch1 = touches[0];
-      const touch2 = touches[1];
-      const cPoint1 = this.getCanvasCoordinatesFromTouch(touch1);
-      const cPoint2 = this.getCanvasCoordinatesFromTouch(touch2);
-      const cCenter = PointUtils.computeCenter(cPoint1, cPoint2);
-      const xDist = Math.abs(cPoint1.x - cPoint2.x);
-      const yDist = Math.abs(cPoint1.y - cPoint2.y);
-      this.zoomLCenter = wctx.mapCanvasToLogicalCoordinates(cCenter);
-      this.zoomStartDist = PointUtils.computeDistance(cPoint1, cPoint2);
-      this.zoomStartFactorX = wctx.getZoomFactor(true);
-      this.zoomStartFactorY = wctx.getZoomFactor(false);
-      this.zoomX = xDist * 2 > yDist;
-      this.zoomY = yDist * 2 > xDist;
-      this.zooming = true; }
-
-   private zoom (touches: TouchList) {
-      const wctx = this.wctx;
-      const eState = wctx.eState;
-      const touch1 = touches[0];
-      const touch2 = touches[1];
-      const cPoint1 = this.getCanvasCoordinatesFromTouch(touch1);
-      const cPoint2 = this.getCanvasCoordinatesFromTouch(touch2);
-      const newCCenter = PointUtils.computeCenter(cPoint1, cPoint2);
-      const newDist = PointUtils.computeDistance(cPoint1, cPoint2);
-      const f = newDist / this.zoomStartDist;
-      if (this.zoomX) {
-         eState.xMax = eState.xMin + wctx.canvas.width / (this.zoomStartFactorX * f); }
-      if (this.zoomY) {
-         eState.yMax = eState.yMin + wctx.canvas.height / (this.zoomStartFactorY * f); }
-      wctx.moveCoordinatePlane(newCCenter, this.zoomLCenter);
-      wctx.refresh(); }}
 
 //--- Keyboard controller ------------------------------------------------------
 
@@ -513,14 +507,12 @@ class KeyboardController {
    private keyDownEventListener = (event: KeyboardEvent) => {
       const keyName = genKeyName(event);
       if (this.processKeyDown(keyName)) {
-         event.preventDefault();
-         event.stopPropagation(); }};
+         event.preventDefault(); }};
 
    private keyPressEventListener = (event: KeyboardEvent) => {
       const keyName = genKeyName(event);
       if (this.processKeyPress(keyName)) {
-         event.preventDefault();
-         event.stopPropagation(); }};
+         event.preventDefault(); }};
 
    private processKeyDown (keyName: string) {
       const wctx = this.wctx;
@@ -538,13 +530,13 @@ class KeyboardController {
                wctx.refresh();
                wctx.fireChangeEvent(); }
             return true; }
-         case "Ctrl+y": case "Ctrl+Shift+z": {
+         case "Ctrl+y": case "Ctrl+Z": {
             if (wctx.redo()) {
                wctx.refresh();
                wctx.fireChangeEvent(); }
             return true; }
          case "Escape": {
-            wctx.mouseController.processEscKey();
+            wctx.pointerController.processEscKey();
             return true; }
          default: {
             return false; }}}
@@ -634,8 +626,7 @@ interface HistoryState {
 class WidgetContext {
 
    public plotter:           FunctionPlotter;
-   public mouseController:   MouseController;
-   public touchController:   TouchController;
+   public pointerController: PointerController;
    public kbController:      KeyboardController;
 
    public canvas:            HTMLCanvasElement;            // the DOM canvas element
@@ -657,13 +648,11 @@ class WidgetContext {
       if (connected == this.isConnected) {
          return; }
       if (connected) {
-         this.plotter         = new FunctionPlotter(this);
-         this.mouseController = new MouseController(this);
-         this.touchController = new TouchController(this);
-         this.kbController    = new KeyboardController(this); }
+         this.plotter           = new FunctionPlotter(this);
+         this.pointerController = new PointerController(this);
+         this.kbController      = new KeyboardController(this); }
        else {
-         this.mouseController.dispose();
-         this.touchController.dispose();
+         this.pointerController.dispose();
          this.kbController.dispose(); }
       this.isConnected = connected; }
 
@@ -751,8 +740,8 @@ class WidgetContext {
       const y1 = vPoint.y - rect.top  - (this.canvas.clientTop  || 0);
          // Our canvas element may have a border, but must have no padding.
          // In the future, the CSSOM View Module can probably be used for proper coordinate mapping.
-      const x = x1 / rect.width  * this.canvas.width;
-      const y = y1 / rect.height * this.canvas.height;
+      const x = x1 / this.canvas.clientWidth  * this.canvas.width;
+      const y = y1 / this.canvas.clientHeight * this.canvas.height;
       return {x, y}; }
 
    // Moves the coordinate plane so that `cPoint` (in canvas coordinates) matches

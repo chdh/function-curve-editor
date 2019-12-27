@@ -12,7 +12,8 @@ body {
    border: 1px solid black;
    margin-top: 5px;
    margin-bottom: 20px;
-   outline: none; }
+   outline: none;
+   touch-action: none; }
 
 div.buttons {
    color: #07C;
