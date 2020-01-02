@@ -1,5 +1,6 @@
 import {UniFunction, InterpolationMethod, createInterpolatorWithFallback} from "commons-math-interpolation";
 import EventTargetPolyfill from "./EventTargetPolyfill";
+import * as DialogManager from "dialog-manager";
 
 //--- Point and PointUtils -----------------------------------------------------
 
@@ -548,7 +549,7 @@ class KeyboardController {
             wctx.zoom(fx, fy);
             wctx.requestRefresh();
             return true; }
-         case "r": {
+         case "i": {
             wctx.reset();
             wctx.requestRefresh();
             wctx.fireChangeEvent();
@@ -576,23 +577,68 @@ class KeyboardController {
             wctx.fireChangeEvent();
             return true; }
          case "k": {
-            const s1 = PointUtils.encodeCoordinateList(eState.knots);
-            const s2 = window.prompt("Knot coordinates:", s1);
-            if (!s2 || s1 == s2) {
-               return; }
-            let newKnots: Point[];
-            try {
-               newKnots = PointUtils.decodeCoordinateList(s2); }
-             catch (e) {
-               window.alert("Input could not be decoded. " + e);
-               return; }
-            wctx.pushUndoHistoryState();
-            wctx.replaceKnots(newKnots);
-            wctx.requestRefresh();
-            wctx.fireChangeEvent();
+            void this.promptKnots();
+            return true; }
+         case "r": {
+            void this.resample1();
             return true; }
          default: {
-            return false; }}}}
+            return false; }}}
+
+   private async promptKnots() {
+      const wctx = this.wctx;
+      const eState = wctx.eState;
+      const s1 = PointUtils.encodeCoordinateList(eState.knots);
+      const s2 = await DialogManager.promptInput({promptText: "Knot coordinates:", defaultValue: s1, rows: 5});
+      if (!s2 || s1 == s2) {
+         return; }
+      let newKnots: Point[];
+      try {
+         newKnots = PointUtils.decodeCoordinateList(s2); }
+       catch (e) {
+         await DialogManager.showMsg({titleText: "Error", msgText: "Input could not be decoded. " + e});
+         return; }
+      wctx.pushUndoHistoryState();
+      wctx.replaceKnots(newKnots);
+      wctx.requestRefresh();
+      wctx.fireChangeEvent(); }
+
+   private async resample1() {
+      const n = await this.promptResampleCount();
+      if (!n) {
+         return; }
+      this.resample2(n); }
+
+   private resample2 (n: number) {
+      const wctx = this.wctx;
+      const oldKnots = wctx.eState.knots;
+      if (oldKnots.length < 1) {
+         void DialogManager.showMsg({msgText: "No knots."});
+         return; }
+      const xMin = oldKnots[0].x;
+      const xMax = oldKnots[oldKnots.length - 1].x;
+      const uniFunction = wctx.createInterpolationFunction();
+      const newKnots: Point[] = Array(n);
+      for (let i = 0; i < n; i++) {
+         const x = xMin + (xMax - xMin) / (n - 1) * i;
+         const y = uniFunction(x);
+         newKnots[i] = {x, y}; }
+      wctx.pushUndoHistoryState();
+      wctx.replaceKnots(newKnots);
+      wctx.requestRefresh();
+      wctx.fireChangeEvent(); }
+
+   private async promptResampleCount() {
+      const wctx = this.wctx;
+      const oldN = wctx.eState.knots.length;
+      const s = await DialogManager.promptInput({titleText: "Re-sample", promptText: "Number of knots:", defaultValue: String(oldN)});
+      if (!s) {
+         return; }
+      const n = Number(s);
+      if (!Number.isInteger(n) || n < 2 || n > 1E7) {
+         await DialogManager.showMsg({titleText: "Error", msgText: "Invalid number: " + s});
+         return; }
+      return n; }}
 
 function genKeyName (event: KeyboardEvent) : string {
    const s =
@@ -992,8 +1038,9 @@ export class Widget {
          "s",                              "toggle snap to grid",
          "l",                              "toggle between linear interpolation and Akima",
          "k",                              "knots (display prompt with coordinate values)",
+         "r",                              "re-sample knots",
          "c",                              "clear the canvas",
-         "r",                              "reset to the initial state" ]; }
+         "i",                              "reset to the initial state" ]; }
 
    // Returns the help text as a HTML string.
    public getFormattedHelpText() : string {

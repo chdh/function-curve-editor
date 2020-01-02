@@ -1,7 +1,7 @@
 {
    "private": true,
    "dependencies": {
-      "function-curve-editor": "^1.0.9"
+      "function-curve-editor": "^1.0.10"
    },
    "devDependencies": {
       "rollup-plugin-node-resolve": "^5.2.0"

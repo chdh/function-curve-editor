@@ -2,6 +2,9 @@ body {
    font-family: Arial, sans-serif;
    font-size: 14px; }
 
+canvas:focus {
+   outline: 1px auto #4D90FE; }
+
 .hidden {
    display: none; }
 
@@ -12,7 +15,6 @@ body {
    border: 1px solid black;
    margin-top: 5px;
    margin-bottom: 20px;
-   outline: none;
    touch-action: none; }
 
 div.buttons {

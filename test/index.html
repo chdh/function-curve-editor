@@ -8,6 +8,13 @@
 
 <body>
 
+<script>
+ try {
+    eval("(async function() {})"); }
+  catch (e) {
+    document.write('<p style="color: red; font-size: 20px; font-weight: bold;">Sorry, your web browser is outdated and cannot run this application!</p>'); }
+</script>
+
 <h2>Function Curve Editor</h2>
 
 <canvas id="functionCurveEditor" tabindex="-1">
