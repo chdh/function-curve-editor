@@ -8,18 +8,23 @@ canvas:focus {
 .hidden {
    display: none; }
 
-#functionCurveEditor {
-   display: block;
+#functionCurveEditorFrame {
+   margin-top: 5px;
+   border: 1px solid black;
    width: 800px;
    height: 500px;
-   border: 1px solid black;
-   margin-top: 5px;
-   margin-bottom: 20px;
+   resize: both;
+   overflow: hidden; }
+
+#functionCurveEditor {
+   display: block;
+   width: 100%;
+   height: 100%;
    touch-action: none; }
 
 div.buttons {
    color: #07C;
-   margin-top: 5px;
+   margin-top: 10px;
    font-size: 12px; }
 
 div.buttons span {

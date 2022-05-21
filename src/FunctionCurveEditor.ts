@@ -262,6 +262,8 @@ class PointerController {
    private pointerDownEventListener = (event: PointerEvent) => {
       if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || (event.pointerType == "mouse" && event.button != 0)) {
          return; }
+      if (this.isPointerInResizeHandle(event)) {
+         return; }
       this.trackPointer(event);
       if ((event.pointerType == "touch" || event.pointerType == "pen") && this.pointers.size == 1) { // detect double-click with touch or pen
          if (this.lastTouchTime > 0 && performance.now() - this.lastTouchTime <= 300) { // double-click
@@ -499,7 +501,22 @@ class PointerController {
 
    private getCanvasCoordinatesFromEvent (event: MouseEvent) : Point {
       const wctx = this.wctx;
-      return wctx.mapViewportToCanvasCoordinates({x: event.clientX, y: event.clientY}); }}
+      return wctx.mapViewportToCanvasCoordinates({x: event.clientX, y: event.clientY}); }
+
+   // Checks whether the resize property of the parent element of the canvas element is "both"
+   // and the pointer is in the lower right corner.
+   private isPointerInResizeHandle (event: PointerEvent) : boolean {
+      const wctx = this.wctx;
+      const parentElement = wctx.canvas.parentNode;
+      if (!(parentElement instanceof HTMLElement)) {
+         return false; }
+      if (getComputedStyle(parentElement).resize != "both") {
+         return false; }
+      const rect = parentElement.getBoundingClientRect();
+      const dx = rect.right - event.clientX;
+      const dy = rect.bottom - event.clientY;
+      const handleSize = 18;
+      return dx >= 0 && dx < handleSize && dy >= 0 && dy < handleSize; }}
 
 //--- Keyboard controller ------------------------------------------------------
 
