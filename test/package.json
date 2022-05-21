@@ -1,9 +1,5 @@
 {
    "private": true,
-   "devDependencies": {
-      "@rollup/plugin-alias": "^3.0.0",
-      "rollup-plugin-node-resolve": "^5.2.0"
-   },
    "scripts": {
       "build": "tsc && rollup -c"
    }

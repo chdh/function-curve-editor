@@ -1,10 +1,10 @@
-import {Widget, EditorState} from "./FunctionCurveEditor";
+import {Widget, EditorState} from "./FunctionCurveEditor.js";
 
 export class FunctionCurveEditorElement extends HTMLElement {
 
    private widget:           Widget;
 
-   constructor() {
+   public constructor() {
       super();
       this.attachShadow({mode: "open"});
       this.shadowRoot!.innerHTML = htmlTemplate;
@@ -13,11 +13,11 @@ export class FunctionCurveEditorElement extends HTMLElement {
       this.widget.setEventTarget(this); }
 
    // Called by the browser when the element is inserted into the DOM.
-   connectedCallback() {
+   public connectedCallback() {
       this.widget.setConnected(true); }
 
    // Called by the browser when the element is removed from the DOM.
-   disconnectedCallback() {
+   public disconnectedCallback() {
       this.widget.setConnected(false); }
 
    // Returns the current state of the function curve editor.

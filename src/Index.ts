@@ -1,2 +1,2 @@
-export {Widget, EditorState, ZoomMode, InterpolationMethod, Point} from "./FunctionCurveEditor";
-export {FunctionCurveEditorElement, registerCustomElement} from "./FunctionCurveEditorWebComponent";
+export {Widget, EditorState, ZoomMode, InterpolationMethod, Point} from "./FunctionCurveEditor.js";
+export {FunctionCurveEditorElement, registerCustomElement} from "./FunctionCurveEditorWebComponent.js";

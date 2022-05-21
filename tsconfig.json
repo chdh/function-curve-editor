@@ -3,7 +3,7 @@
       "allowUnreachableCode": false,
       "alwaysStrict": true,
       "declaration": true,
-      "lib": ["ES7", "DOM"],
+      "lib": ["es2017", "DOM"],
       "module": "ES6",
       "moduleResolution": "node",
       "noFallthroughCasesInSwitch": true,
@@ -17,7 +17,7 @@
       "sourceMap": true,
       "strictFunctionTypes": true,
       "strictNullChecks": true,
-      "target": "ES2017"
+      "target": "es2017"
    },
    "include": [
       "src/**/*"

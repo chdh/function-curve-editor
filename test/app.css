@@ -19,9 +19,11 @@ canvas:focus {
 
 div.buttons {
    color: #07C;
-   cursor: pointer;
    margin-top: 5px;
    font-size: 12px; }
+
+div.buttons span {
+   cursor: pointer; }
 
 #helpText {
    background-color: #FEFAE2;

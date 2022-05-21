@@ -4,7 +4,7 @@ export default class EventTargetPolyfill {
 
    private listenerMap:      Map<string, EventListener[]>;
 
-   constructor() {
+   public constructor() {
       this.listenerMap = new Map(); }
 
    public addEventListener (type: string, listener: EventListener) {

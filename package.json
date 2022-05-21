@@ -1,9 +1,10 @@
 {
    "name": "function-curve-editor",
-   "version": "1.0.11",
+   "version": "1.0.12",
    "description": "A function curve editor widget / web component",
+   "type": "module",
    "types": "dist/Index.d.ts",
-   "module": "dist/Index.js",
+   "main": "dist/Index.js",
    "keywords": [
       "function",
       "curve",

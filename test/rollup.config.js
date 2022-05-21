@@ -1,5 +1,5 @@
 import alias from "@rollup/plugin-alias";
-import resolve from "rollup-plugin-node-resolve";
+import resolve from "@rollup/plugin-node-resolve";
 
 export default {
    input: "tempBuild/Main.js",

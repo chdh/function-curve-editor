@@ -1,6 +1,6 @@
 import {UniFunction, InterpolationMethod, createInterpolatorWithFallback} from "commons-math-interpolation";
-import EventTargetPolyfill from "./EventTargetPolyfill";
 import * as DialogManager from "dialog-manager";
+import EventTargetPolyfill from "./EventTargetPolyfill.js";
 
 //--- Point and PointUtils -----------------------------------------------------
 
@@ -69,8 +69,10 @@ class FunctionPlotter {
 
    private wctx:             WidgetContext;
    private ctx:              CanvasRenderingContext2D;
+   private newCanvasWidth:   number;
+   private newCanvasHeight:  number;
 
-   constructor (wctx: WidgetContext) {
+   public constructor (wctx: WidgetContext) {
       this.wctx = wctx;
       const ctx = wctx.canvas.getContext("2d");
       if (!ctx) {
@@ -196,11 +198,24 @@ class FunctionPlotter {
 
    public paint() {
       const wctx = this.wctx;
+      if (!this.newCanvasWidth || !this.newCanvasHeight) {
+         return; }
+      if (this.newCanvasWidth != wctx.canvas.width || this.newCanvasHeight != wctx.canvas.height) {
+         wctx.canvas.width = this.newCanvasWidth;
+         wctx.canvas.height = this.newCanvasHeight; }
       this.clearCanvas();
       if (wctx.eState.gridEnabled) {
          this.drawGrid(); }
       this.drawFunctionCurveFromKnots();
-      this.drawKnots(); }}
+      this.drawKnots(); }
+
+   public resize (width: number, height: number) {
+      const wctx = this.wctx;
+      if (this.newCanvasWidth == width && this.newCanvasHeight == height) {
+         return; }
+      this.newCanvasWidth = width;
+      this.newCanvasHeight = height;
+      wctx.requestRefresh(); }}
 
 //--- Pointer controller -------------------------------------------------------
 
@@ -221,7 +236,7 @@ class PointerController {
    private zoomX:            boolean;                      // true when zooming in X direction
    private zoomY:            boolean;                      // true when zooming in y direction
 
-   constructor (wctx: WidgetContext) {
+   public constructor (wctx: WidgetContext) {
       this.wctx = wctx;
       this.pointers = new Map();
       wctx.canvas.addEventListener("pointerdown",   this.pointerDownEventListener);
@@ -492,7 +507,7 @@ class KeyboardController {
 
    private wctx:             WidgetContext;
 
-   constructor (wctx: WidgetContext) {
+   public constructor (wctx: WidgetContext) {
       this.wctx = wctx;
       wctx.canvas.addEventListener("keydown", this.keyDownEventListener);
       wctx.canvas.addEventListener("keypress", this.keyPressEventListener); }
@@ -668,25 +683,29 @@ interface HistoryState {
 
 class WidgetContext {
 
-   public plotter:                     FunctionPlotter;
-   public pointerController:           PointerController;
-   public kbController:                KeyboardController;
+   public  plotter:                    FunctionPlotter;
+   public  pointerController:          PointerController;
+   public  kbController:               KeyboardController;
 
-   public canvas:                      HTMLCanvasElement;            // the DOM canvas element
-   public eventTarget:                 EventTarget;
-   public isConnected:                 boolean;
+   public  canvas:                     HTMLCanvasElement;            // the DOM canvas element
+   private canvasStyle:                CSSStyleDeclaration;
+   public  eventTarget:                EventTarget;
+   public  isConnected:                boolean;
    private animationFramePending:      boolean;
+   private resizeObserver:             ResizeObserver;
 
-   public eState:                      EditorState;                  // current editor state
-   public initialEState:               EditorState;                  // last set initial editor state
-   public iState:                      InteractionState;
-   public hState:                      HistoryState;
+   public  eState:                     EditorState;                  // current editor state
+   public  initialEState:              EditorState;                  // last set initial editor state
+   public  iState:                     InteractionState;
+   public  hState:                     HistoryState;
 
-   constructor (canvas: HTMLCanvasElement) {
+   public constructor (canvas: HTMLCanvasElement) {
       this.canvas = canvas;
+      this.canvasStyle = getComputedStyle(canvas);
       this.eventTarget = new EventTargetPolyfill();
       this.isConnected = false;
       this.animationFramePending = false;
+      this.resizeObserver = new ResizeObserver(this.resizeObserverCallback);
       this.setEditorState(<EditorState>{}); }
 
    public setConnected (connected: boolean) {
@@ -695,16 +714,14 @@ class WidgetContext {
       if (connected) {
          this.plotter           = new FunctionPlotter(this);
          this.pointerController = new PointerController(this);
-         this.kbController      = new KeyboardController(this); }
+         this.kbController      = new KeyboardController(this);
+         this.resizeObserver.observe(this.canvas); }
        else {
          this.pointerController.dispose();
-         this.kbController.dispose(); }
+         this.kbController.dispose();
+         this.resizeObserver.unobserve(this.canvas); }
       this.isConnected = connected;
       this.requestRefresh(); }
-
-   public adjustBackingBitmapResolution() {
-      this.canvas.width = this.canvas.clientWidth || 200;
-      this.canvas.height = this.canvas.clientHeight || 200; }
 
    public setEditorState (eState: EditorState) {
       this.eState = cloneEditorState(eState);
@@ -728,7 +745,7 @@ class WidgetContext {
       this.setEditorState(this.initialEState); }
 
    public clearKnots() {
-      this.eState.knots = Array();
+      this.eState.knots = [];
       this.resetInteractionState(); }
 
    private resetHistoryState() {
@@ -782,14 +799,23 @@ class WidgetContext {
       return {x: this.mapCanvasToLogicalXCoordinate(cPoint.x), y: this.mapCanvasToLogicalYCoordinate(cPoint.y)}; }
 
    public mapViewportToCanvasCoordinates (vPoint: Point) : Point {
+      const canvasStyle = this.canvasStyle;
       const rect = this.canvas.getBoundingClientRect();
-      const x1 = vPoint.x - rect.left - (this.canvas.clientLeft || 0);
-      const y1 = vPoint.y - rect.top  - (this.canvas.clientTop  || 0);
-         // Our canvas element may have a border, but must have no padding.
-         // In the future, the CSSOM View Module can probably be used for proper coordinate mapping.
-      const x = x1 / this.canvas.clientWidth  * this.canvas.width;
-      const y = y1 / this.canvas.clientHeight * this.canvas.height;
-      return {x, y}; }
+      const paddingLeft   = getPx(canvasStyle.paddingLeft);
+      const paddingRight  = getPx(canvasStyle.paddingRight);
+      const paddingTop    = getPx(canvasStyle.paddingTop);
+      const paddingBottom = getPx(canvasStyle.paddingBottom);
+      const borderLeft    = getPx(canvasStyle.borderLeftWidth);
+      const borderTop     = getPx(canvasStyle.borderTopWidth);
+      const width  = this.canvas.clientWidth  - paddingLeft - paddingRight;
+      const height = this.canvas.clientHeight - paddingTop  - paddingBottom;
+      const x1 = vPoint.x - rect.left - borderLeft - paddingLeft;
+      const y1 = vPoint.y - rect.top  - borderTop  - paddingTop;
+      const x = x1 / width  * this.canvas.width;
+      const y = y1 / height * this.canvas.height;
+      return {x, y};
+      function getPx (s: string) : number {
+         return s ? parseFloat(s) : 0; }}                            // ignores the "px" suffix
 
    // Moves the coordinate plane so that `cPoint` (in canvas coordinates) matches
    // `lPoint` (in logical coordinates), while keeping the zoom factors unchanged.
@@ -908,7 +934,7 @@ class WidgetContext {
       this.animationFramePending = false;
       if (!this.isConnected) {
          return; }
-      this.refresh(); }
+      this.refresh(); };
 
    // Re-paints the canvas and updates the cursor.
    private refresh() {
@@ -921,7 +947,13 @@ class WidgetContext {
 
    public fireChangeEvent() {
       const event = new CustomEvent("change");
-      this.eventTarget.dispatchEvent(event); }}
+      this.eventTarget.dispatchEvent(event); }
+
+   private resizeObserverCallback = (entries: ResizeObserverEntry[]) => {
+      const box = entries[0].contentBoxSize[0];
+      const width = box.inlineSize;
+      const height = box.blockSize;
+      this.plotter.resize(width, height); }; }
 
 //--- Editor state -------------------------------------------------------------
 
@@ -936,8 +968,8 @@ export interface EditorState {
    yMin:                     number;                       // minimum y coordinate of the function graph area
    yMax:                     number;                       // maximum y coordinate of the function graph area
    extendedDomain:           boolean;                      // false = function domain is from first to last knot, true = function domain is extended
-   relevantXMin?:            number | undefined;           // lower edge of relevant X range or undefined
-   relevantXMax?:            number | undefined;           // upper edge of relevant X range or undefined
+   relevantXMin?:            number;                       // lower edge of relevant X range or undefined
+   relevantXMax?:            number;                       // upper edge of relevant X range or undefined
    gridEnabled:              boolean;                      // true to draw a coordinate grid
    snapToGridEnabled:        boolean;                      // true to enable snap to grid behavior
    interpolationMethod:      InterpolationMethod;          // optimal interpolation method
@@ -966,7 +998,7 @@ export class Widget {
 
    private wctx:             WidgetContext;
 
-   constructor (canvas: HTMLCanvasElement, connected = true) {
+   public constructor (canvas: HTMLCanvasElement, connected = true) {
       this.wctx = new WidgetContext(canvas);
       if (connected) {
          this.setConnected(true); }}
@@ -981,10 +1013,7 @@ export class Widget {
    // When the widget is connected, it also adjusts the resolution of the backing bitmap
    // and draws the widget.
    public setConnected (connected: boolean) {
-      const wctx = this.wctx;
-      this.wctx.setConnected(connected);
-      if (connected) {
-         wctx.adjustBackingBitmapResolution(); }}
+      this.wctx.setConnected(connected); }
 
    // Registers an event listener.
    // Currently only the "change" event is supported.

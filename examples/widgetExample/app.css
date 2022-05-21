@@ -11,15 +11,16 @@ body {
    height: 500px;
    border: 1px solid black;
    margin-top: 5px;
-   margin-bottom: 20px;
    outline: none;
    touch-action: none; }
 
 div.buttons {
    color: #07C;
-   cursor: pointer;
-   margin-top: 5px;
+   margin-top: 10px;
    font-size: 12px; }
+
+div.buttons span {
+   cursor: pointer; }
 
 #helpText {
    background-color: #FEFAE2;
