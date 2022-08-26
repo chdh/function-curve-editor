@@ -25,7 +25,7 @@ export class FunctionCurveEditorElement extends HTMLElement {
       return this.widget.getEditorState(); }
 
    // Updates the current state of the function curve editor.
-   public setEditorState (eState: EditorState) {
+   public setEditorState (eState: Partial<EditorState>) {
       this.widget.setEditorState(eState); }
 
    // Returns the current graph function.

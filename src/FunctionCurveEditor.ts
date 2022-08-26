@@ -1,6 +1,6 @@
+import {nextTick} from "./Utils.js";
 import {UniFunction, InterpolationMethod, createInterpolatorWithFallback} from "commons-math-interpolation";
 import * as DialogManager from "dialog-manager";
-import EventTargetPolyfill from "./EventTargetPolyfill.js";
 
 //--- Point and PointUtils -----------------------------------------------------
 
@@ -276,6 +276,8 @@ class PointerController {
       event.preventDefault(); };
 
    private pointerUpEventListener = (event: PointerEvent) => {
+      if (!this.pointers.has(event.pointerId)) {
+         return; }
       this.releasePointer(event.pointerId);
       this.switchMode();
       event.preventDefault(); };
@@ -409,6 +411,8 @@ class PointerController {
 
    private wheelEventListener = (event: WheelEvent) => {
       const wctx = this.wctx;
+      if (wctx.eState.focusShield && !wctx.hasFocus()) {
+         return; }
       const cPoint = this.getCanvasCoordinatesFromEvent(event);
       if (event.deltaY == 0) {
          return; }
@@ -719,7 +723,7 @@ class WidgetContext {
    public constructor (canvas: HTMLCanvasElement) {
       this.canvas = canvas;
       this.canvasStyle = getComputedStyle(canvas);
-      this.eventTarget = new EventTargetPolyfill();
+      this.eventTarget = new EventTarget();
       this.isConnected = false;
       this.animationFramePending = false;
       this.resizeObserver = new ResizeObserver(this.resizeObserverCallback);
@@ -740,7 +744,7 @@ class WidgetContext {
       this.isConnected = connected;
       this.requestRefresh(); }
 
-   public setEditorState (eState: EditorState) {
+   public setEditorState (eState: Partial<EditorState>) {
       this.eState = cloneEditorState(eState);
       this.initialEState = cloneEditorState(eState);
       this.resetInteractionState();
@@ -963,8 +967,15 @@ class WidgetContext {
       this.canvas.style.cursor = style; }
 
    public fireChangeEvent() {
-      const event = new CustomEvent("change");
-      this.eventTarget.dispatchEvent(event); }
+      this.fireEvent("change"); }
+
+   public fireEvent (eventName: string) {
+      const event = new CustomEvent(eventName);
+      nextTick(() => {                                     // call event listeners asynchronously
+         this.eventTarget.dispatchEvent(event); }); }
+
+   public hasFocus() : boolean {
+      return document.activeElement === this.canvas; }
 
    private resizeObserverCallback = (entries: ResizeObserverEntry[]) => {
       const box = entries[0].contentBoxSize[0];
@@ -990,24 +1001,25 @@ export interface EditorState {
    gridEnabled:              boolean;                      // true to draw a coordinate grid
    snapToGridEnabled:        boolean;                      // true to enable snap to grid behavior
    interpolationMethod:      InterpolationMethod;          // optimal interpolation method
-   primaryZoomMode:          ZoomMode; }                   // zoom mode to be used for mouse wheel when no shift/alt/ctrl-Key is pressed
+   primaryZoomMode:          ZoomMode;                     // zoom mode to be used for mouse wheel when no shift/alt/ctrl-Key is pressed
+   focusShield:              boolean; }                    // true to ignore mouse wheel events without focus
 
 // Clones and adds missing fields.
-function cloneEditorState (eState: EditorState) : EditorState {
-   const eState2 = <EditorState>{};
-   eState2.knots               = (eState.knots ?? []).slice();
-   eState2.xMin                = eState.xMin ?? 0;
-   eState2.xMax                = eState.xMax ?? 1;
-   eState2.yMin                = eState.yMin ?? 0;
-   eState2.yMax                = eState.yMax ?? 1;
-   eState2.extendedDomain      = eState.extendedDomain ?? true;
-   eState2.relevantXMin        = eState.relevantXMin;
-   eState2.relevantXMax        = eState.relevantXMax;
-   eState2.gridEnabled         = eState.gridEnabled ?? true;
-   eState2.snapToGridEnabled   = eState.snapToGridEnabled ?? true;
-   eState2.interpolationMethod = eState.interpolationMethod ?? "akima";
-   eState2.primaryZoomMode     = eState.primaryZoomMode ?? ZoomMode.xy;
-   return eState2; }
+function cloneEditorState (eState: Partial<EditorState>) : EditorState {
+   return {
+      knots:                (eState.knots ?? []).slice(),
+      xMin:                 eState.xMin ?? 0,
+      xMax:                 eState.xMax ?? 1,
+      yMin:                 eState.yMin ?? 0,
+      yMax:                 eState.yMax ?? 1,
+      extendedDomain:       eState.extendedDomain ?? true,
+      relevantXMin:         eState.relevantXMin,
+      relevantXMax:         eState.relevantXMax,
+      gridEnabled:          eState.gridEnabled ?? true,
+      snapToGridEnabled:    eState.snapToGridEnabled ?? true,
+      interpolationMethod:  eState.interpolationMethod ?? "akima",
+      primaryZoomMode:      eState.primaryZoomMode ?? ZoomMode.xy,
+      focusShield:          eState.focusShield ?? false }; }
 
 //--- Widget -------------------------------------------------------------------
 
@@ -1049,7 +1061,7 @@ export class Widget {
       return this.wctx.getEditorState(); }
 
    // Updates the current state of the function curve editor.
-   public setEditorState (eState: EditorState) {
+   public setEditorState (eState: Partial<EditorState>) {
       const wctx = this.wctx;
       wctx.setEditorState(eState); }
 
