@@ -341,7 +341,8 @@ class PointerController {
          wctx.undo();
          wctx.fireChangeEvent(); }
       if (wctx.iState.planeDragging && this.dragStartCPos && this.dragStartLPos) {
-         wctx.moveCoordinatePlane(this.dragStartCPos, this.dragStartLPos); }
+         wctx.moveCoordinatePlane(this.dragStartCPos, this.dragStartLPos);
+         wctx.fireViewportChangeEvent(); }
       this.stopDragging();
       wctx.requestRefresh(); }
 
@@ -367,7 +368,8 @@ class PointerController {
          wctx.fireChangeEvent(); }
        else if (wctx.iState.planeDragging && this.dragStartLPos) {
          wctx.moveCoordinatePlane(cPoint, this.dragStartLPos);
-         wctx.requestRefresh(); }}
+         wctx.requestRefresh();
+         wctx.fireViewportChangeEvent(); }}
 
    private startZooming() {
       const wctx = this.wctx;
@@ -407,22 +409,28 @@ class PointerController {
       if (this.zoomY) {
          eState.yMax = eState.yMin + wctx.canvas.height / (this.zoomStartFactorY * f); }
       wctx.moveCoordinatePlane(newCCenter, this.zoomLCenter);
-      wctx.requestRefresh(); }
+      wctx.requestRefresh();
+      wctx.fireViewportChangeEvent(); }
 
    private wheelEventListener = (event: WheelEvent) => {
       const wctx = this.wctx;
       if (wctx.eState.focusShield && !wctx.hasFocus()) {
          return; }
-      const cPoint = this.getCanvasCoordinatesFromEvent(event);
+      event.preventDefault();
+      const isProbablyPad = event.deltaMode == 0 && Math.abs(event.deltaY) < 50 || event.deltaX != 0;
+      if (isProbablyPad && !event.ctrlKey) {               // for touchpads, modern browsers set WheelEvent.ctrlKey when zooming
+         this.moveByWheel(event);
+         return; }
       if (event.deltaY == 0) {
          return; }
-      const f = (event.deltaY > 0) ? Math.SQRT1_2 : Math.SQRT2;
+      const f0 = isProbablyPad ? 1.05 : Math.SQRT2;
+      const f = (event.deltaY > 0) ? 1 / f0 : f0;
       let zoomMode: ZoomMode;
       if (event.shiftKey) {
          zoomMode = ZoomMode.y; }
        else if (event.altKey) {
          zoomMode = ZoomMode.x; }
-       else if (event.ctrlKey) {
+       else if (event.ctrlKey && !isProbablyPad) {
          zoomMode = ZoomMode.xy; }
        else {
          zoomMode = wctx.eState.primaryZoomMode; }
@@ -435,9 +443,22 @@ class PointerController {
             fx = 1; fy = f; break; }
          default: {
             fx = f; fy = f; }}
+      const cPoint = this.getCanvasCoordinatesFromEvent(event);
       wctx.zoom(fx, fy, cPoint);
       wctx.requestRefresh();
-      event.preventDefault(); };
+      wctx.fireViewportChangeEvent(); };
+
+   // Handles two-finger pan on touch pad.
+   private moveByWheel (event: WheelEvent) {
+      const wctx = this.wctx;
+      const f = (event.deltaMode == 1) ? 15 : (event.deltaMode == 2) ? 100 : 1;
+      const dx = f * event.deltaX;
+      const dy = f * event.deltaY;
+      if (dx == 0 && dy == 0) {
+         return; }
+      wctx.moveCoordinatePlaneRelPx(dx, -dy);
+      wctx.requestRefresh();
+      wctx.fireViewportChangeEvent(); }
 
    private processDoubleClickTouch() {
       const cPoint = this.getCanvasCoordinates();
@@ -584,6 +605,7 @@ class KeyboardController {
             const fy = (keyName == '+' || keyName == 'Y') ? Math.SQRT2 : (keyName == '-' || keyName == 'y') ? Math.SQRT1_2 : 1;
             wctx.zoom(fx, fy);
             wctx.requestRefresh();
+            wctx.fireViewportChangeEvent();
             return true; }
          case "i": {
             wctx.reset();
@@ -851,6 +873,18 @@ class WidgetContext {
       eState.yMin = lPoint.y - (cHeight - cPoint.y) * lHeight / cHeight;
       eState.yMax = eState.yMin + lHeight; }
 
+   // Moves the coordinate plane relative by pixels.
+   public moveCoordinatePlaneRelPx (dx: number, dy: number) {
+      const eState = this.eState;
+      const lWidth  = eState.xMax - eState.xMin;
+      const lHeight = eState.yMax - eState.yMin;
+      const cWidth  = this.canvas.width;
+      const cHeight = this.canvas.height;
+      eState.xMin = eState.xMin + dx / cWidth * lWidth;
+      eState.xMax = eState.xMin + lWidth;
+      eState.yMin = eState.yMin + dy / cHeight * lHeight;
+      eState.yMax = eState.yMin + lHeight; }
+
    public getZoomFactor (xy: boolean) : number {
       const eState = this.eState;
       return xy ? this.canvas.width / (eState.xMax - eState.xMin) : this.canvas.height / (eState.yMax - eState.yMin); }
@@ -968,6 +1002,9 @@ class WidgetContext {
 
    public fireChangeEvent() {
       this.fireEvent("change"); }
+
+   public fireViewportChangeEvent() {
+      this.fireEvent("viewportchange"); }
 
    public fireEvent (eventName: string) {
       const event = new CustomEvent(eventName);
@@ -1087,7 +1124,7 @@ export class Widget {
          "shift + mouse wheel",            "zoom y-axis",
          "ctrl + mouse wheel",             "zoom both axes",
          "alt + mouse wheel",              "zoom x-axis",
-         "touch zoom gesture",             "zoom x, y or both axes",
+         "touch zoom gesture",             "zoom in any direction",
          "+ / -",                          "zoom both axes in/out",
          "X / x",                          "zoom x-axis in/out",
          "Y / y",                          "zoom y-axis in/out",
