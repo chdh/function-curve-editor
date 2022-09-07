@@ -10,7 +10,7 @@ const initialKnots: FunctionCurveEditor.Point[] = [
    {x: 6, y: -0.5},
    {x: 8, y: 0   } ];
 
-const initialEditorState = <FunctionCurveEditor.EditorState>{
+const initialEditorState = <Partial<FunctionCurveEditor.EditorState>>{
    knots:          initialKnots,
    xMin:           -1,
    xMax:           9,
