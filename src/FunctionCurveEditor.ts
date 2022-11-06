@@ -50,7 +50,7 @@ class PointUtils {
       for (const point of points) {
          if (s.length > 0) {
             s += ", "; }
-         s += "[" + point.x + ", " + point.y + "]"; }
+         s += "[" + formatCoordinateValue(point.x) + ", " + formatCoordinateValue(point.y) + "]"; }
       return s; }
 
    public static decodeCoordinateList (s: string) : Point[] {
@@ -62,6 +62,12 @@ class PointUtils {
             throw new Error("Invalid syntax in element " + i + "."); }
          points[i] = {x: e[0], y: e[1]}; }
       return points; }}
+
+function formatCoordinateValue (v: number) {
+   let s = String(v);
+   if (s.length > 10) {
+      s = v.toPrecision(6); }
+   return s; }
 
 //--- Plotter ------------------------------------------------------------------
 
@@ -645,21 +651,11 @@ class KeyboardController {
 
    private async promptKnots() {
       const wctx = this.wctx;
-      const eState = wctx.eState;
-      const s1 = PointUtils.encodeCoordinateList(eState.knots);
+      const s1 = wctx.getKnotCoordinateString();
       const s2 = await DialogManager.promptInput({promptText: "Knot coordinates:", defaultValue: s1, rows: 5});
       if (!s2 || s1 == s2) {
          return; }
-      let newKnots: Point[];
-      try {
-         newKnots = PointUtils.decodeCoordinateList(s2); }
-       catch (e) {
-         await DialogManager.showMsg({titleText: "Error", msgText: "Input could not be decoded. " + e});
-         return; }
-      wctx.pushUndoHistoryState();
-      wctx.replaceKnots(newKnots);
-      wctx.requestRefresh();
-      wctx.fireChangeEvent(); }
+      await wctx.setKnotCoordinateString(s2); }
 
    private async resample1() {
       const n = await this.promptResampleCount();
@@ -726,6 +722,7 @@ interface HistoryState {
 
 class WidgetContext {
 
+   public  widget:                     Widget;
    public  plotter:                    FunctionPlotter;
    public  pointerController:          PointerController;
    public  kbController:               KeyboardController;
@@ -742,7 +739,9 @@ class WidgetContext {
    public  iState:                     InteractionState;
    public  hState:                     HistoryState;
 
-   public constructor (canvas: HTMLCanvasElement) {
+   public constructor (canvas: HTMLCanvasElement, widget: Widget) {
+      globalInit();
+      this.widget = widget;
       this.canvas = canvas;
       this.canvasStyle = getComputedStyle(canvas);
       this.eventTarget = new EventTarget();
@@ -758,11 +757,13 @@ class WidgetContext {
          this.plotter           = new FunctionPlotter(this);
          this.pointerController = new PointerController(this);
          this.kbController      = new KeyboardController(this);
-         this.resizeObserver.observe(this.canvas); }
+         this.resizeObserver.observe(this.canvas);
+         canvasMap.set(this.canvas, this.widget); }
        else {
          this.pointerController.dispose();
          this.kbController.dispose();
-         this.resizeObserver.unobserve(this.canvas); }
+         this.resizeObserver.unobserve(this.canvas);
+         canvasMap.delete(this.canvas); }
       this.isConnected = connected;
       this.requestRefresh(); }
 
@@ -954,6 +955,21 @@ class WidgetContext {
             minDist = d; }}
       return (nearestKnotNdx != undefined) ? {knotNdx: nearestKnotNdx, distance: minDist!} : undefined; }
 
+   public getKnotCoordinateString() {
+      return PointUtils.encodeCoordinateList(this.eState.knots); }
+
+   public async setKnotCoordinateString (s: string) {
+      let newKnots: Point[];
+      try {
+         newKnots = PointUtils.decodeCoordinateList(s); }
+       catch (e) {
+         await DialogManager.showMsg({titleText: "Error", msgText: "Knot coordinates could not be decoded. " + e});
+         return; }
+      this.pushUndoHistoryState();
+      this.replaceKnots(newKnots);
+      this.requestRefresh();
+      this.fireChangeEvent(); }
+
    public getGridParms (xy: boolean) : {space: number; span: number; pos: number; decPow: number} | undefined {
       const minSpaceC = xy ? 66 : 50;                                              // minimum space between grid lines in pixel
       const edge = xy ? this.eState.xMin : this.eState.yMin;                       // canvas edge coordinate
@@ -1065,7 +1081,7 @@ export class Widget {
    private wctx:             WidgetContext;
 
    public constructor (canvas: HTMLCanvasElement, connected = true) {
-      this.wctx = new WidgetContext(canvas);
+      this.wctx = new WidgetContext(canvas, this);
       if (connected) {
          this.setConnected(true); }}
 
@@ -1133,6 +1149,7 @@ export class Widget {
          "s",                              "toggle snap to grid",
          "l",                              "toggle between linear interpolation and Akima",
          "k",                              "knots (display prompt with coordinate values)",
+         "Clipboard copy / paste",         "copy/paste knot coordinates",
          "r",                              "re-sample knots",
          "c",                              "clear the canvas",
          "i",                              "reset to the initial state" ]; }
@@ -1155,4 +1172,50 @@ export class Widget {
          a.push("</td>"); }
       a.push( "</tbody>");
       a.push("</table>");
-      return a.join(""); }}
+      return a.join(""); }
+
+   // Clipboard "copy" event handler.
+   public clipboardCopyEventHandler (event: ClipboardEvent) {
+      if (!event.clipboardData) {
+         return; }
+      event.preventDefault();
+      const s = this.wctx.getKnotCoordinateString();
+      event.clipboardData.setData("text", s); }
+
+   // Clipboard "paste" event handler.
+   public clipboardPasteEventHandler (event: ClipboardEvent) {
+      const s = event.clipboardData?.getData("text");
+      if (!s) {
+         return; }
+      event.preventDefault();
+      void this.wctx.setKnotCoordinateString(s); }}
+
+//--- Global -------------------------------------------------------------------
+
+var globalInitDone           = false;
+var canvasMap:               Map<HTMLCanvasElement, Widget>;
+
+function getActiveWidget() : Widget | undefined {
+   let e: any = document.activeElement;
+   while (true) {
+      if (!e) {
+         return; }
+      if (e.tagName == "CANVAS") {
+         return canvasMap.get(<HTMLCanvasElement>e); }
+      e = e.shadowRoot?.activeElement; }}
+
+function globalCopyEventListener (event: ClipboardEvent) {
+   getActiveWidget()?.clipboardCopyEventHandler(event); }
+
+function globalPasteEventListener (event: ClipboardEvent) {
+   getActiveWidget()?.clipboardPasteEventHandler(event); }
+
+function globalInit() {
+   if (globalInitDone) {
+      return; }
+   canvasMap = new Map();
+   // Because clipboard events cannot be received on Canvas elements, we have to use global event listeners.
+   document.addEventListener("copy", globalCopyEventListener);
+   document.addEventListener("paste", globalPasteEventListener);
+   //
+   globalInitDone = true; }
