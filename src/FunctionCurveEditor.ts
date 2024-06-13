@@ -94,13 +94,13 @@ class FunctionPlotter {
       const xMin = (wctx.eState.relevantXMin != undefined) ? Math.max(0,    Math.min(width, wctx.mapLogicalToCanvasXCoordinate(wctx.eState.relevantXMin))) : 0;
       const xMax = (wctx.eState.relevantXMax != undefined) ? Math.max(xMin, Math.min(width, wctx.mapLogicalToCanvasXCoordinate(wctx.eState.relevantXMax))) : width;
       if (xMin > 0) {
-         ctx.fillStyle = "#F8F8F8";
+         ctx.fillStyle = wctx.eState.secondaryBackground;
          ctx.fillRect(0, 0, xMin, height); }
       if (xMax > xMin) {
-         ctx.fillStyle = "#FFFFFF";
+         ctx.fillStyle = wctx.eState.background;
          ctx.fillRect(xMin, 0, xMax - xMin, height); }
       if (xMax < width) {
-         ctx.fillStyle = "#F8F8F8";
+         ctx.fillStyle = wctx.eState.secondaryBackground;
          ctx.fillRect(xMax, 0, width - xMax, height); }
       ctx.restore(); }
 
@@ -118,7 +118,7 @@ class FunctionPlotter {
       const r = bold ? 5 : 4;
       ctx.arc(point.x, point.y, r, 0, 2 * Math.PI);
       ctx.lineWidth = bold ? 3 : 1;
-      ctx.strokeStyle = (isDragging || isPotential) ? "#EE5500" : isSelected ? "#0080FF" : "#CC4444";
+      ctx.strokeStyle = (isDragging || isPotential) ? wctx.eState.activeKnotColor : isSelected ? wctx.eState.selectedKnotColor : wctx.eState.defaultKnotColor;
       ctx.stroke();
       ctx.restore(); }
 
@@ -139,7 +139,7 @@ class FunctionPlotter {
       ctx.save();
       ctx.textBaseline = "bottom";
       ctx.font = "12px";
-      ctx.fillStyle = "#707070";
+      ctx.fillStyle = wctx.eState.labelColor;
       const x = xy ? cPos + 5 : 5;
       const y = xy ? wctx.canvas.height - 2 : cPos - 2;
       const s = this.formatLabel(value, decPow);
@@ -150,7 +150,7 @@ class FunctionPlotter {
       const wctx = this.wctx;
       const ctx = this.ctx;
       ctx.save();
-      ctx.fillStyle = (p == 0) ? "#989898" : (p % 10 == 0) ? "#D4D4D4" : "#EEEEEE";
+      ctx.fillStyle = (p == 0) ? wctx.eState.axisColor : (p % 10 == 0) ? wctx.eState.secondaryLineColor : wctx.eState.primaryLineColor;
       ctx.fillRect(xy ? cPos : 0, xy ? 0 : cPos, xy ? 1 : wctx.canvas.width, xy ? wctx.canvas.height : 1);
       ctx.restore(); }
 
@@ -188,7 +188,7 @@ class FunctionPlotter {
          const ly = uniFunction(lx);
          const cy = Math.max(-1E6, Math.min(1E6, wctx.mapLogicalToCanvasYCoordinate(ly)));
          ctx.lineTo(cx, cy); }
-      ctx.strokeStyle = "#44CC44";
+      ctx.strokeStyle = wctx.eState.curveColor;
       ctx.stroke();
       ctx.restore(); }
 
@@ -1055,7 +1055,17 @@ export interface EditorState {
    snapToGridEnabled:        boolean;                      // true to enable snap to grid behavior
    interpolationMethod:      InterpolationMethod;          // optimal interpolation method
    primaryZoomMode:          ZoomMode;                     // zoom mode to be used for mouse wheel when no shift/alt/ctrl-Key is pressed
-   focusShield:              boolean; }                    // true to ignore mouse wheel events without focus
+   focusShield:              boolean;                      // true to ignore mouse wheel events without focus
+   curveColor:               string;                       // CSS color for the curve
+   defaultKnotColor:         string;                       // default CSS color of knots
+   selectedKnotColor:        string;                       // CSS color of selected knots
+   activeKnotColor:          string;                       // default CSS color of active knot
+   labelColor:               string;                       // CSS color of labels
+   primaryLineColor:         string;                       // CSS color for primary lines
+   secondaryLineColor:       string;                       // CSS color for secondary lines
+   axisColor:                string;                       // CSS color for axes
+   background:               string;                       // CSS color for background
+   secondaryBackground:      string; }                     // CSS color for out of domain background
 
 // Clones and adds missing fields.
 function cloneEditorState (eState: Partial<EditorState>) : EditorState {
@@ -1072,7 +1082,17 @@ function cloneEditorState (eState: Partial<EditorState>) : EditorState {
       snapToGridEnabled:    eState.snapToGridEnabled ?? true,
       interpolationMethod:  eState.interpolationMethod ?? "akima",
       primaryZoomMode:      eState.primaryZoomMode ?? ZoomMode.xy,
-      focusShield:          eState.focusShield ?? false }; }
+      focusShield:          eState.focusShield ?? false,
+      curveColor:           eState.curveColor ?? "#44CC44",
+      defaultKnotColor:     eState.defaultKnotColor ?? "#CC4444",
+      selectedKnotColor:    eState.selectedKnotColor ?? "#0080FF",
+      activeKnotColor:      eState.activeKnotColor ?? "#EE5500",
+      labelColor:           eState.labelColor ?? "#707070",
+      axisColor:            eState.axisColor ?? "#989898",
+      secondaryLineColor:   eState.secondaryLineColor ?? "#D4D4D4",
+      primaryLineColor:     eState.primaryLineColor ?? "#EEEEEE",
+      secondaryBackground:  eState.secondaryBackground ?? "#F8F8F8",
+      background:           eState.background ?? "#FFFFFF" }; }
 
 //--- Widget -------------------------------------------------------------------
 
