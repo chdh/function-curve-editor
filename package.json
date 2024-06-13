@@ -22,6 +22,11 @@
          "name": "Christian d'Heureuse",
          "email": "chdh@inventec.ch",
          "url": "http://www.source-code.biz"
+      },
+      {
+         "name": "Sébastien Guimmara",
+         "email": "sebastien.guimmara@oslandia.com",
+         "url": "https://github.com/sguimmara"
       }
    ],
    "scripts": {
