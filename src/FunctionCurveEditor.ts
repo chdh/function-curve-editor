@@ -1,5 +1,5 @@
 import {nextTick} from "./Utils.js";
-import {UniFunction, InterpolationMethod, createInterpolatorWithFallback} from "commons-math-interpolation";
+import {UniFunction, InterpolationMethod, InterpolatorOptions, createInterpolatorWithFallback} from "commons-math-interpolation";
 import * as DialogManager from "dialog-manager";
 
 //--- Point and PointUtils -----------------------------------------------------
@@ -892,8 +892,8 @@ class WidgetContext {
 
    public zoom (fx: number, fyOpt?: number, cCenterOpt?: Point) {
       const eState = this.eState;
-      const fy = (fyOpt != undefined) ? fyOpt : fx;
-      const cCenter = cCenterOpt ? cCenterOpt : {x: this.canvas.width / 2, y: this.canvas.height / 2};
+      const fy =  fyOpt ?? fx;
+      const cCenter = cCenterOpt ?? {x: this.canvas.width / 2, y: this.canvas.height / 2};
       const lCenter = this.mapCanvasToLogicalCoordinates(cCenter);
       eState.xMax = eState.xMin + (eState.xMax - eState.xMin) / fx;
       eState.yMax = eState.yMin + (eState.yMax - eState.yMin) / fy;
@@ -985,7 +985,7 @@ class WidgetContext {
       const pos = span * Math.ceil(p1 / span);                                     // position of first grid line in grid space units
       return {space, span, pos, decPow}; }
 
-   public createInterpolationFunction() : UniFunction {
+   public createInterpolationFunction (options?: InterpolatorOptions) : UniFunction {
       const knots = this.eState.knots;
       const n = knots.length;
       const xVals = new Float64Array(n);
@@ -993,7 +993,7 @@ class WidgetContext {
       for (let i = 0; i < n; i++) {
          xVals[i] = knots[i].x;
          yVals[i] = knots[i].y; }
-      return createInterpolatorWithFallback(this.eState.interpolationMethod, xVals, yVals); }
+      return createInterpolatorWithFallback(this.eState.interpolationMethod, xVals, yVals, options); }
 
    public requestRefresh() {
       if (this.animationFramePending || !this.isConnected) {
@@ -1121,7 +1121,8 @@ export class Widget {
    // Returns the current graph function.
    // The returned JavaScript function maps each x value to an y value.
    public getFunction() : (x: number) => number {
-      return this.wctx.createInterpolationFunction(); }
+      const domainRestricted = !this.wctx.eState.extendedDomain;
+      return this.wctx.createInterpolationFunction({domainRestricted}); }
 
    // Returns the help text as an array.
    public getRawHelpText() : string[] {
@@ -1149,7 +1150,7 @@ export class Widget {
          "s",                              "toggle snap to grid",
          "l",                              "toggle between linear interpolation and Akima",
          "k",                              "knots (display prompt with coordinate values)",
-         "Clipboard copy / paste",         "copy/paste knot coordinates",
+         "clipboard copy / paste",         "copy/paste knot coordinates",
          "r",                              "re-sample knots",
          "c",                              "clear the canvas",
          "i",                              "reset to the initial state" ]; }
@@ -1193,15 +1194,15 @@ export class Widget {
 //--- Global -------------------------------------------------------------------
 
 var globalInitDone           = false;
-var canvasMap:               Map<HTMLCanvasElement, Widget>;
+var canvasMap:               Map<HTMLCanvasElement, Widget>;                   // maps HTML canvas DOM objects to out widget class objects
 
 function getActiveWidget() : Widget | undefined {
    let e: any = document.activeElement;
-   while (true) {
+   while (true) {                                                              // loop through shadow root DOM layers
       if (!e) {
          return; }
-      if (e.tagName == "CANVAS") {
-         return canvasMap.get(<HTMLCanvasElement>e); }
+      if (e.tagName == "CANVAS") {                                             // if the active DOM element is a canvas
+         return canvasMap.get(<HTMLCanvasElement>e); }                         // try to map it to the possibly associated widget class
       e = e.shadowRoot?.activeElement; }}
 
 function globalCopyEventListener (event: ClipboardEvent) {

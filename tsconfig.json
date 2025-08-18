@@ -3,23 +3,25 @@
       "allowUnreachableCode": false,
       "alwaysStrict": true,
       "declaration": true,
-      "lib": ["es2017", "DOM"],
-      "module": "ES6",
+      "declarationMap": true,
+      "forceConsistentCasingInFileNames": true,
+      "lib": ["ES2020", "DOM"],
+      "module": "ES2020",
       "moduleResolution": "node",
       "noFallthroughCasesInSwitch": true,
       "noImplicitAny": true,
+      "noImplicitOverride": true,
       "noImplicitReturns": true,
       "noImplicitThis": true,
       "noUnusedLocals": true,
       "noUnusedParameters": true,
       "outDir": "dist",
       "removeComments": true,
+      "rewriteRelativeImportExtensions": true,
       "sourceMap": true,
       "strictFunctionTypes": true,
       "strictNullChecks": true,
-      "target": "es2017"
+      "target": "ES2020"
    },
-   "include": [
-      "src/**/*"
-   ]
+   "include": ["src"]
 }
