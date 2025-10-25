@@ -127,10 +127,14 @@ class FunctionPlotter {
       for (let knotNdx = 0; knotNdx < knots.length; knotNdx++) {
          this.drawKnot(knotNdx); }}
 
-   private formatLabel (value: number, decPow: number) {
+   private formatLabel (value: number, decPow: number, xy: boolean) {
+      const wctx = this.wctx;
       let s = (decPow <= 7 && decPow >= -6) ? value.toFixed(Math.max(0, -decPow)) : value.toExponential();
       if (s.length > 10) {
          s = value.toPrecision(6); }
+      const unit = xy ? wctx.eState.xAxisUnit : wctx.eState.yAxisUnit;
+      if (unit) {
+         s += " " + unit; }
       return s; }
 
    private drawLabel (cPos: number, value: number, decPow: number, xy: boolean) {
@@ -142,7 +146,7 @@ class FunctionPlotter {
       ctx.fillStyle = "#707070";
       const x = xy ? cPos + 5 : 5;
       const y = xy ? wctx.canvas.height - 2 : cPos - 2;
-      const s = this.formatLabel(value, decPow);
+      const s = this.formatLabel(value, decPow, xy);
       ctx.fillText(s, x, y);
       ctx.restore(); }
 
@@ -646,6 +650,16 @@ class KeyboardController {
          case "r": {
             void this.resample1();
             return true; }
+         case "u": {
+            if (wctx.undo()) {
+               wctx.requestRefresh();
+               wctx.fireChangeEvent(); }
+            return true; }
+         case "U": {
+            if (wctx.redo()) {
+               wctx.requestRefresh();
+               wctx.fireChangeEvent(); }
+            return true; }
          default: {
             return false; }}}
 
@@ -1053,6 +1067,8 @@ export interface EditorState {
    relevantXMax?:            number;                       // upper edge of relevant X range or undefined
    gridEnabled:              boolean;                      // true to draw a coordinate grid
    snapToGridEnabled:        boolean;                      // true to enable snap to grid behavior
+   xAxisUnit?:               string;                       // unit to be appended to x-axis labels
+   yAxisUnit?:               string;                       // unit to be appended to y-axis labels
    interpolationMethod:      InterpolationMethod;          // optimal interpolation method
    primaryZoomMode:          ZoomMode;                     // zoom mode to be used for mouse wheel when no shift/alt/ctrl-Key is pressed
    focusShield:              boolean; }                    // true to ignore mouse wheel events without focus
@@ -1060,19 +1076,21 @@ export interface EditorState {
 // Clones and adds missing fields.
 function cloneEditorState (eState: Partial<EditorState>) : EditorState {
    return {
-      knots:                (eState.knots ?? []).slice(),
-      xMin:                 eState.xMin ?? 0,
-      xMax:                 eState.xMax ?? 1,
-      yMin:                 eState.yMin ?? 0,
-      yMax:                 eState.yMax ?? 1,
-      extendedDomain:       eState.extendedDomain ?? true,
-      relevantXMin:         eState.relevantXMin,
-      relevantXMax:         eState.relevantXMax,
-      gridEnabled:          eState.gridEnabled ?? true,
-      snapToGridEnabled:    eState.snapToGridEnabled ?? true,
-      interpolationMethod:  eState.interpolationMethod ?? "akima",
-      primaryZoomMode:      eState.primaryZoomMode ?? ZoomMode.xy,
-      focusShield:          eState.focusShield ?? false }; }
+      knots:                 (eState.knots ?? []).slice(),
+      xMin:                  eState.xMin ?? 0,
+      xMax:                  eState.xMax ?? 1,
+      yMin:                  eState.yMin ?? 0,
+      yMax:                  eState.yMax ?? 1,
+      extendedDomain:        eState.extendedDomain ?? true,
+      relevantXMin:          eState.relevantXMin,
+      relevantXMax:          eState.relevantXMax,
+      gridEnabled:           eState.gridEnabled ?? true,
+      snapToGridEnabled:     eState.snapToGridEnabled ?? true,
+      xAxisUnit:             eState.xAxisUnit,
+      yAxisUnit:             eState.yAxisUnit,
+      interpolationMethod:   eState.interpolationMethod ?? "akima",
+      primaryZoomMode:       eState.primaryZoomMode ?? ZoomMode.xy,
+      focusShield:           eState.focusShield ?? false }; }
 
 //--- Widget -------------------------------------------------------------------
 
@@ -1098,10 +1116,14 @@ export class Widget {
       this.wctx.setConnected(connected); }
 
    // Registers an event listener.
-   // Currently only the "change" event is supported.
-   // The "change" event is fired after the user has changed the edited function
-   // so that the function values are different. It is not fired when only the display
-   // of the function has changed, e.g. by zooming or moving the plane.
+   // Supported events:
+   //    change:
+   //      Fired after the user has changed the function definition.
+   //      It is not fired when only the display of the function has changed,
+   //      e.g. by zooming or moving the plane.
+   //    viewportchange:
+   //      Fired after the user has changed the viewport of the widget e.g. by
+   //      zooming or moving the plane.
    public addEventListener (type: string, listener: EventListener) {
       this.wctx.eventTarget.addEventListener(type, listener); }
 
@@ -1135,12 +1157,12 @@ export class Widget {
          "Delete / Backspace",             "delete the selected knot",
          "double-click or double-tap",     "create a new knot",
          "Esc",                            "abort moving",
-         "Ctrl+Z / Alt+Backspace",         "undo",
-         "Ctrl+Y / Ctrl+Shift+Z",          "redo",
+         "Ctrl+Z / Alt+Backspace / u",     "undo",
+         "Ctrl+Y / Ctrl+Shift+Z / U",      "redo",
          "mouse wheel",                    "zoom " + primaryZoomAxis,
-         "shift + mouse wheel",            "zoom y-axis",
-         "ctrl + mouse wheel",             "zoom both axes",
-         "alt + mouse wheel",              "zoom x-axis",
+         "Shift + mouse wheel",            "zoom y-axis",
+         "Ctrl + mouse wheel",             "zoom both axes",
+         "Alt + mouse wheel",              "zoom x-axis",
          "touch zoom gesture",             "zoom in any direction",
          "+ / -",                          "zoom both axes in/out",
          "X / x",                          "zoom x-axis in/out",
