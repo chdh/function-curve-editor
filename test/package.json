@@ -2,5 +2,9 @@
    "private": true,
    "scripts": {
       "build": "tsc && rollup -c"
+   },
+   "dependencies": {
+      "@rollup/plugin-alias": "^6.0.0",
+      "@rollup/plugin-node-resolve": "^16.0.3"
    }
 }

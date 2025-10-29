@@ -21,7 +21,8 @@ const initialEditorState = <FunctionCurveEditor.EditorState>{
    extendedDomain: true,
    relevantXMin:   -10,
    relevantXMax:   10,
-   gridEnabled:    true };
+   gridEnabled:    true,
+   customPaintFunction };
 
 function dumpFunctionValues (f: Function) {
    for (let x = -1; x < 10; x++) {
@@ -34,6 +35,27 @@ function toggleHelp() {
       t.innerHTML = widget.getFormattedHelpText(); }
     else {
       t.classList.add("hidden"); }}
+
+function drawSpiral (centerX: number, centerY: number, widthX: number, widthY: number, growthFactor: number, revolutions: number, w0: number, pctx: FunctionCurveEditor.CustomPaintContext) {
+   const ctx = pctx.ctx;
+   ctx.save();
+   ctx.strokeStyle = "#800080";
+   ctx.beginPath();
+   for (let w = 0; w < revolutions * 2 * Math.PI; w += 0.02) {
+      const g = growthFactor ** (w / (2 * Math.PI));
+      const lx = centerX + g * Math.cos(w0 + w) * widthX;
+      const ly = centerY + g * Math.sin(w0 + w) * widthY;
+      const cx = pctx.mapLogicalToCanvasXCoordinate(lx);
+      const cy = pctx.mapLogicalToCanvasYCoordinate(ly);
+      ctx.lineTo(cx, cy); }
+   ctx.stroke();
+   ctx.restore(); }
+
+function customPaintFunction (pctx: FunctionCurveEditor.CustomPaintContext) {
+   switch (pctx.pass) {
+      case 1: drawSpiral(1.5, -0.75, 0.5, 0.25, 0.6, 8, 0, pctx); break;
+      case 2: drawSpiral(2.5, -0.75, 0.5, 0.25, 0.6, 8, Math.PI, pctx); break;
+      }}
 
 function startup2() {
    const canvas: HTMLCanvasElement = <HTMLCanvasElement>document.getElementById("functionCurveEditor");

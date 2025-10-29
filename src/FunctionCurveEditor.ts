@@ -208,16 +208,26 @@ class FunctionPlotter {
 
    public paint() {
       const wctx = this.wctx;
+      const eState = wctx.eState;
+      const customPaintContextBase = {
+         eState,
+         ctx: this.ctx,
+         mapLogicalToCanvasXCoordinate: (x: number) => wctx.mapLogicalToCanvasXCoordinate(x),
+         mapLogicalToCanvasYCoordinate: (y: number) => wctx.mapLogicalToCanvasYCoordinate(y) };
       if (!this.newCanvasWidth || !this.newCanvasHeight) {
          return; }
       if (this.newCanvasWidth != wctx.canvas.width || this.newCanvasHeight != wctx.canvas.height) {
          wctx.canvas.width = this.newCanvasWidth;
          wctx.canvas.height = this.newCanvasHeight; }
       this.clearCanvas();
-      if (wctx.eState.gridEnabled) {
+      if (eState.customPaintFunction) {
+         eState.customPaintFunction({pass: 1, ...customPaintContextBase}); }
+      if (eState.gridEnabled) {
          this.drawGrid(); }
       this.drawFunctionCurveFromKnots();
-      this.drawKnots(); }
+      this.drawKnots();
+      if (eState.customPaintFunction) {
+         eState.customPaintFunction({pass: 2, ...customPaintContextBase}); }}
 
    public resize (width: number, height: number) {
       const wctx = this.wctx;
@@ -1071,7 +1081,8 @@ export interface EditorState {
    yAxisUnit?:               string;                       // unit to be appended to y-axis labels
    interpolationMethod:      InterpolationMethod;          // optimal interpolation method
    primaryZoomMode:          ZoomMode;                     // zoom mode to be used for mouse wheel when no shift/alt/ctrl-Key is pressed
-   focusShield:              boolean; }                    // true to ignore mouse wheel events without focus
+   focusShield:              boolean;                      // true to ignore mouse wheel events without focus
+   customPaintFunction?:     CustomPaintFunction; }        // custom paint function
 
 // Clones and adds missing fields.
 function cloneEditorState (eState: Partial<EditorState>) : EditorState {
@@ -1090,7 +1101,20 @@ function cloneEditorState (eState: Partial<EditorState>) : EditorState {
       yAxisUnit:             eState.yAxisUnit,
       interpolationMethod:   eState.interpolationMethod ?? "akima",
       primaryZoomMode:       eState.primaryZoomMode ?? ZoomMode.xy,
-      focusShield:           eState.focusShield ?? false }; }
+      focusShield:           eState.focusShield ?? false,
+      customPaintFunction:   eState.customPaintFunction }; }
+
+//--- Custom paint function ----------------------------------------------------
+
+// A custom paint function can be used to draw additional content on the canvas.
+export type CustomPaintFunction = (pctx: CustomPaintContext) => void;
+
+export interface CustomPaintContext {
+   pass:                     number;                       // 1 = paint on background, 2 = paint on foreground
+   eState:                   EditorState;                  // editor state
+   ctx:                      CanvasRenderingContext2D;     // canvas drawing context
+   mapLogicalToCanvasXCoordinate: (lx: number) => number;  // function to map x coordinate from logical to canvas
+   mapLogicalToCanvasYCoordinate: (ly: number) => number;} // function to map y coordinate from logical to canvas
 
 //--- Widget -------------------------------------------------------------------
 

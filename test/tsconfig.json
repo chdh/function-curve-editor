@@ -1,12 +1,15 @@
 {
    "compilerOptions": {
       "allowUnreachableCode": false,
+      "alwaysStrict": true,
       "baseUrl": "src",
-      "lib": ["es2017", "DOM"],
-      "module": "ES6",
+      "forceConsistentCasingInFileNames": true,
+      "lib": ["ES2020", "DOM"],
+      "module": "ES2020",
       "moduleResolution": "node",
       "noFallthroughCasesInSwitch": true,
       "noImplicitAny": true,
+      "noImplicitOverride": true,
       "noImplicitReturns": true,
       "noImplicitThis": true,
       "noUnusedLocals": true,
@@ -18,9 +21,7 @@
       "removeComments": true,
       "strictFunctionTypes": true,
       "strictNullChecks": true,
-      "target": "ES2017"
+      "target": "ES2020"
    },
-   "include": [
-      "src/**/*"
-   ]
+   "include": ["src"]
 }
