@@ -16,7 +16,7 @@
       "noUnusedParameters": true,
       "outDir": "tempBuild",
       "paths": {
-         "function-curve-editor": ["../../dist/FunctionCurveEditor.d.ts"]
+         "function-curve-editor": ["../../dist/index.d.ts"]
       },
       "removeComments": true,
       "strictFunctionTypes": true,
