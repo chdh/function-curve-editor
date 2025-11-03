@@ -180,7 +180,7 @@ class FunctionPlotter {
       this.drawXYGrid(true);
       this.drawXYGrid(false); }
 
-   private drawFunctionCurve (uniFunction: UniFunction, lxMin: number, lxMax: number) {
+   private drawFunctionCurve (uniFunction: UniFunction, lxMin: number, lxMax: number, color: string) {
       const wctx = this.wctx;
       const ctx = this.ctx;
       ctx.save();
@@ -192,7 +192,7 @@ class FunctionPlotter {
          const ly = uniFunction(lx);
          const cy = Math.max(-1E6, Math.min(1E6, wctx.mapLogicalToCanvasYCoordinate(ly)));
          ctx.lineTo(cx, cy); }
-      ctx.strokeStyle = "#44CC44";
+      ctx.strokeStyle = color;
       ctx.stroke();
       ctx.restore(); }
 
@@ -204,7 +204,7 @@ class FunctionPlotter {
       const xMin = wctx.eState.extendedDomain ? -1E99 : knots[0].x;
       const xMax = wctx.eState.extendedDomain ?  1E99 : knots[knots.length - 1].x;
       const uniFunction = wctx.createInterpolationFunction();
-      this.drawFunctionCurve(uniFunction, xMin, xMax); }
+      this.drawFunctionCurve(uniFunction, xMin, xMax, "#44CC44"); }
 
    public paint() {
       const wctx = this.wctx;
@@ -213,7 +213,8 @@ class FunctionPlotter {
          eState,
          ctx: this.ctx,
          mapLogicalToCanvasXCoordinate: (x: number) => wctx.mapLogicalToCanvasXCoordinate(x),
-         mapLogicalToCanvasYCoordinate: (y: number) => wctx.mapLogicalToCanvasYCoordinate(y) };
+         mapLogicalToCanvasYCoordinate: (y: number) => wctx.mapLogicalToCanvasYCoordinate(y),
+         drawFunctionCurve: (uniFunction: UniFunction, lxMin: number, lxMax: number, color: string) => this.drawFunctionCurve(uniFunction, lxMin, lxMax, color) };
       if (!this.newCanvasWidth || !this.newCanvasHeight) {
          return; }
       if (this.newCanvasWidth != wctx.canvas.width || this.newCanvasHeight != wctx.canvas.height) {
@@ -1126,7 +1127,9 @@ export interface CustomPaintContext {
    eState:                   EditorState;                  // editor state
    ctx:                      CanvasRenderingContext2D;     // canvas drawing context
    mapLogicalToCanvasXCoordinate: (lx: number) => number;  // function to map x coordinate from logical to canvas
-   mapLogicalToCanvasYCoordinate: (ly: number) => number;} // function to map y coordinate from logical to canvas
+   mapLogicalToCanvasYCoordinate: (ly: number) => number;  // function to map y coordinate from logical to canvas
+   drawFunctionCurve:                                      // function to draw an additional function curve within the editor canvas
+      (uniFunction: UniFunction, lxMin: number, lxMax: number, color: string) => void; }
 
 //--- Widget -------------------------------------------------------------------
 
