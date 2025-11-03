@@ -263,6 +263,7 @@ class PointerController {
       wctx.canvas.addEventListener("pointerup",     this.pointerUpEventListener);
       wctx.canvas.addEventListener("pointercancel", this.pointerUpEventListener);
       wctx.canvas.addEventListener("pointermove",   this.pointerMoveEventListener);
+      wctx.canvas.addEventListener("pointerleave",  this.pointerLeaveEventListener);
       wctx.canvas.addEventListener("dblclick",      this.dblClickEventListener);
       wctx.canvas.addEventListener("wheel",         this.wheelEventListener); }
 
@@ -272,6 +273,7 @@ class PointerController {
       wctx.canvas.removeEventListener("pointerup",     this.pointerUpEventListener);
       wctx.canvas.removeEventListener("pointercancel", this.pointerUpEventListener);
       wctx.canvas.removeEventListener("pointermove",   this.pointerMoveEventListener);
+      wctx.canvas.removeEventListener("pointerleave",  this.pointerLeaveEventListener);
       wctx.canvas.removeEventListener("dblclick",      this.dblClickEventListener);
       wctx.canvas.removeEventListener("wheel",         this.wheelEventListener);
       this.releaseAllPointers(); }
@@ -322,6 +324,9 @@ class PointerController {
        else if (this.pointers.size == 2 && this.zooming) {
          this.zoom(); }
       event.preventDefault(); };
+
+   private pointerLeaveEventListener = (_event: PointerEvent) => {
+      this.releasePotentialKnot(); };
 
    private trackPointer (event: PointerEvent) {
       const wctx = this.wctx;
@@ -508,8 +513,15 @@ class PointerController {
       const cPoint = this.getCanvasCoordinatesFromEvent(event);
       const knotNdx = this.findNearKnot(cPoint, event.pointerType);
       if (wctx.iState.potentialKnotNdx != knotNdx) {
-        wctx.iState.potentialKnotNdx = knotNdx;
-        wctx.requestRefresh(); }}
+         wctx.iState.potentialKnotNdx = knotNdx;
+         wctx.requestRefresh(); }}
+
+   private releasePotentialKnot() {
+      const wctx = this.wctx;
+      if (wctx.iState.potentialKnotNdx == undefined) {
+         return; }
+      wctx.iState.potentialKnotNdx = undefined;
+      wctx.requestRefresh(); }
 
    private findNearKnot (cPoint: Point, pointerType: string) : number | undefined {
       const wctx = this.wctx;
@@ -1138,6 +1150,11 @@ export class Widget {
    // and draws the widget.
    public setConnected (connected: boolean) {
       this.wctx.setConnected(connected); }
+
+   // Request a refresh (repaint) of the entire canvas content.
+   // The refresh is done asynchronously in the next animation frame cycle.
+   public requestRefresh() {
+      this.wctx.requestRefresh(); }
 
    // Registers an event listener.
    // Supported events:
