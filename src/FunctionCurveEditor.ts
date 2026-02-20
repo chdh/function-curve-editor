@@ -1,12 +1,21 @@
-import {nextTick} from "./Utils.js";
 import {UniFunction, InterpolationMethod, InterpolatorOptions, createInterpolatorWithFallback} from "commons-math-interpolation";
 import * as DialogManager from "dialog-manager";
+
+import * as Utils from "./Utils.ts";
+import {nextTick} from "./Utils.ts";
 
 //--- Point and PointUtils -----------------------------------------------------
 
 export interface Point {
    x: number;
    y: number; }
+
+// Rule: y1 <= x2 and y1 <= y2.
+interface Rectangle {
+   x1: number;
+   x2: number;
+   y1: number;
+   y2: number; }
 
 class PointUtils {
 
@@ -22,6 +31,12 @@ class PointUtils {
    public static computeCenter (point1: Point, point2: Point) : Point {
       return {x: (point1.x + point2.x) / 2, y: (point1.y + point2.y) / 2}; }
 
+   public static isPointInRectangle (point: Point, rect: Rectangle) : boolean {
+      return point.x >= rect.x1 && point.x <= rect.x2 && point.y >= rect.y1 && point.y <= rect.y2; }
+
+   public static createRectangleFromPoints (p1: Point, p2: Point) : Rectangle {
+      return {x1: Math.min(p1.x, p2.x), x2: Math.max(p1.x, p2.x), y1: Math.min(p1.y, p2.y), y2: Math.max(p1.y, p2.y)}; }
+
    // Returns the index of points1[pointIndex] in points2, or undefined.
    public static mapPointIndex (points1: Point[], points2: Point[], pointIndex: number | undefined) : number | undefined {
       if (pointIndex == undefined) {
@@ -29,7 +44,15 @@ class PointUtils {
       const point = points1[pointIndex];
       return PointUtils.findPoint(points2, point); }
 
-   // Returns the index of point in the points array or undefined.
+   public static mapPointsIndexes (points1: Point[], points2: Point[], pointIndexes: number[]) : number[] {
+      const newPointIndexes = [];
+      for (const pointIndex of pointIndexes) {
+         const newPointIndex = this.mapPointIndex(points1, points2, pointIndex);
+         if (newPointIndex != undefined) {
+            newPointIndexes.push(newPointIndex); }}
+      return newPointIndexes; }
+
+   // Returns the index of `point` in the `points` array or undefined.
    public static findPoint (points: Point[], point: Point) : number | undefined {
       if (!point) {
          return; }
@@ -106,14 +129,17 @@ class FunctionPlotter {
 
    private drawKnot (knotNdx: number) {
       const wctx = this.wctx;
+      const iState = wctx.iState;
       const ctx = this.ctx;
       const knot = wctx.eState.knots[knotNdx];
       const point = wctx.mapLogicalToCanvasCoordinates(knot);
       ctx.save();
       ctx.beginPath();
-      const isDragging   = knotNdx == wctx.iState.selectedKnotNdx && wctx.iState.knotDragging;
-      const isSelected   = knotNdx == wctx.iState.selectedKnotNdx;
-      const isPotential  = knotNdx == wctx.iState.potentialKnotNdx;
+      const selRect = (iState.iMode == InteractionMode.selectionRectangle) ? iState.selectionRectangle : undefined;
+      const inSelRect = selRect ? PointUtils.isPointInRectangle(knot, selRect) : false;
+      const isDragging  = iState.selectedKnotsNdxs.includes(knotNdx) && iState.iMode == InteractionMode.knotDragging;
+      const isSelected  = iState.selectedKnotsNdxs.includes(knotNdx);
+      const isPotential = knotNdx == iState.potentialKnotNdx || inSelRect;
       const bold = isDragging || isSelected || isPotential;
       const r = bold ? 5 : 4;
       ctx.arc(point.x, point.y, r, 0, 2 * Math.PI);
@@ -126,6 +152,19 @@ class FunctionPlotter {
       const knots = this.wctx.eState.knots;
       for (let knotNdx = 0; knotNdx < knots.length; knotNdx++) {
          this.drawKnot(knotNdx); }}
+
+   private drawSelectionRectangle() {
+      const wctx = this.wctx;
+      const iState = wctx.iState;
+      const ctx = this.ctx;
+      if (iState.iMode != InteractionMode.selectionRectangle || !iState.selectionRectangle) {
+         return; }
+      const rect = wctx.mapLogicalToCanvasRect(iState.selectionRectangle);
+      ctx.save();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = "#0080FF";
+      ctx.strokeRect(rect.x1, rect.y1, rect.x2 - rect.x1, rect.y2 - rect.y1);
+      ctx.restore(); }
 
    private formatLabel (value: number, decPow: number, xy: boolean) {
       const wctx = this.wctx;
@@ -227,6 +266,7 @@ class FunctionPlotter {
          this.drawGrid(); }
       this.drawFunctionCurveFromKnots();
       this.drawKnots();
+      this.drawSelectionRectangle();
       if (eState.customPaintFunction) {
          eState.customPaintFunction({pass: 2, ...customPaintContextBase}); }}
 
@@ -243,19 +283,20 @@ class FunctionPlotter {
 // Controller for mouse and touch input.
 class PointerController {
 
-   private wctx:             WidgetContext;
-   private pointers:         Map<number,PointerEvent>;     // maps IDs of active pointers to last pointer events
-   private dragStartLPos:    Point | undefined;            // logical coordinates of starting point of drag action
-   private dragStartCPos:    Point | undefined;            // canvas coordinates of starting point of drag action
-   private dragCount:        number;
-   private lastTouchTime:    number;
-   private zooming:          boolean = false;
-   private zoomLCenter:      Point;                        // zoom center point in logical coordinates
-   private zoomStartDist:    number;
-   private zoomStartFactorX: number;
-   private zoomStartFactorY: number;
-   private zoomX:            boolean;                      // true when zooming in X direction
-   private zoomY:            boolean;                      // true when zooming in y direction
+   private wctx:                       WidgetContext;
+   private pointers:                   Map<number,PointerEvent>;     // maps IDs of active pointers to last pointer events
+   private dragStartLPos:              Point | undefined;            // logical coordinates of starting point of drag action
+   private dragStartCPos:              Point | undefined;            // canvas coordinates of starting point of drag action
+   private dragStartKnotsPos:          Point[] | undefined;          // logical coordinates of starting positions of knots beeing dragged
+   private dragCount:                  number;
+   private primaryKnotWasSelected:     boolean;                      // true if the primary knot was selected before the knot dragging state
+   private lastTouchTime:              number;
+   private zoomLCenter:                Point;                        // zoom center point in logical coordinates
+   private zoomStartDist:              number;
+   private zoomStartFactorX:           number;
+   private zoomStartFactorY:           number;
+   private zoomX:                      boolean;                      // true when zooming in X direction
+   private zoomY:                      boolean;                      // true when zooming in y direction
 
    public constructor (wctx: WidgetContext) {
       this.wctx = wctx;
@@ -266,7 +307,7 @@ class PointerController {
       wctx.canvas.addEventListener("pointermove",   this.pointerMoveEventListener);
       wctx.canvas.addEventListener("pointerleave",  this.pointerLeaveEventListener);
       wctx.canvas.addEventListener("dblclick",      this.dblClickEventListener);
-      wctx.canvas.addEventListener("wheel",         this.wheelEventListener); }
+      wctx.canvas.addEventListener("wheel",         this.wheelEventListener, {passive: false}); }
 
    public dispose() {
       const wctx = this.wctx;
@@ -280,10 +321,11 @@ class PointerController {
       this.releaseAllPointers(); }
 
    public processEscKey() {
-      this.abortDragging(); }
+      this.abortDragging();
+      this.resetInteractionMode(); }
 
    private pointerDownEventListener = (event: PointerEvent) => {
-      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || (event.pointerType == "mouse" && event.button != 0)) {
+      if (event.altKey || event.metaKey || (event.pointerType == "mouse" && event.button != 0)) {
          return; }
       if (this.isPointerInResizeHandle(event)) {
          return; }
@@ -295,34 +337,41 @@ class PointerController {
             event.preventDefault();
             return; }
          this.lastTouchTime = performance.now(); }
-      this.switchMode();
+      this.switchInteractionMode(event);
       event.preventDefault(); };
 
    private pointerUpEventListener = (event: PointerEvent) => {
       if (!this.pointers.has(event.pointerId)) {
          return; }
       this.releasePointer(event.pointerId);
-      this.switchMode();
+      if (this.pointers.size == 0 && event.type == "pointerup") {              // last pointer up
+         this.updateSelectionOnPointerUp(event); }
+      this.resetInteractionMode();
       event.preventDefault(); };
 
-   private switchMode() {
+   private resetInteractionMode() {
       const wctx = this.wctx;
       this.stopDragging();
-      this.stopZooming();
+      wctx.iState.iMode = InteractionMode.none; }
+
+   private switchInteractionMode (event: PointerEvent) {
+      const wctx = this.wctx;
+      this.resetInteractionMode();
       if (this.pointers.size == 1) {                       // left click or single touch
-         this.startDragging();
-         wctx.canvas.focus(); }
+         wctx.canvas.focus();
+         this.startDragging(event); }
        else if (this.pointers.size == 2) {                 // zoom gesture
          this.startZooming(); }}
 
    private pointerMoveEventListener = (event: PointerEvent) => {
+      const wctx = this.wctx;
       if (!this.pointers.has(event.pointerId)) {
          this.updatePotentialKnot(event);
          return; }
       this.trackPointer(event);
       if (this.pointers.size == 1) {
          this.drag(); }
-       else if (this.pointers.size == 2 && this.zooming) {
+       else if (this.pointers.size == 2 && wctx.iState.iMode == InteractionMode.zooming) {
          this.zoom(); }
       event.preventDefault(); };
 
@@ -346,56 +395,138 @@ class PointerController {
          const pointerId = this.pointers.keys().next().value;
          this.releasePointer(pointerId); }}
 
-   private startDragging() {
+   private startDragging (event: PointerEvent) {
       const wctx = this.wctx;
+      const iState = wctx.iState;
       const cPoint = this.getCanvasCoordinates();
       const lPoint = wctx.mapCanvasToLogicalCoordinates(cPoint);
       const pointerType = this.pointers.values().next().value.pointerType;
       const knotNdx = this.findNearKnot(cPoint, pointerType);
-      wctx.iState.selectedKnotNdx = knotNdx;
-      wctx.iState.knotDragging = knotNdx != undefined;
-      wctx.iState.planeDragging = knotNdx == undefined;
+      if (knotNdx != undefined && event.shiftKey) {                            // extend selection
+         this.extendKnotsSelection(knotNdx);
+         return; }                                                             // (no dragging in this case)
+      if (knotNdx != undefined) {                                              // drag knots
+         this.primaryKnotWasSelected = iState.selectedKnotsNdxs.includes(knotNdx);
+         const extendSelection = this.primaryKnotWasSelected || event.ctrlKey;
+         if (extendSelection) {
+            Utils.removeValueFromArray(iState.selectedKnotsNdxs, knotNdx);
+            iState.selectedKnotsNdxs.unshift(knotNdx); }                       // the first knot is the primary knot beeing dragged
+          else {
+            iState.selectedKnotsNdxs = [knotNdx]; }
+         this.dragStartKnotsPos = iState.selectedKnotsNdxs.map(ndx => PointUtils.clone(wctx.eState.knots[ndx]));
+         iState.iMode = InteractionMode.knotDragging;
+         iState.mruKnotNdx = knotNdx; }
+       else if (event.shiftKey) {                                              // draw selection rectangle
+         iState.selectionRectangle = undefined;
+         iState.iMode = InteractionMode.selectionRectangle; }
+       else {                                                                  // drag plane
+         iState.iMode = InteractionMode.planeDragging; }
       this.dragStartLPos = lPoint;
       this.dragStartCPos = cPoint;
       this.dragCount = 0;
-      wctx.iState.potentialKnotNdx = undefined;
+      iState.potentialKnotNdx = undefined;
       wctx.requestRefresh(); }
 
    private abortDragging() {
       const wctx = this.wctx;
-      if (wctx.iState.knotDragging && this.dragCount > 0) {
-         wctx.undo();
-         wctx.fireChangeEvent(); }
-      if (wctx.iState.planeDragging && this.dragStartCPos && this.dragStartLPos) {
-         wctx.moveCoordinatePlane(this.dragStartCPos, this.dragStartLPos);
-         wctx.fireViewportChangeEvent(); }
-      this.stopDragging();
+      switch (wctx.iState.iMode) {
+         case InteractionMode.knotDragging: {
+            if (this.dragCount > 0) {
+               wctx.undo();
+               wctx.fireChangeEvent(); }
+            break; }
+         case InteractionMode.planeDragging: {
+            wctx.moveCoordinatePlane(this.dragStartCPos!, this.dragStartLPos!);
+            wctx.fireViewportChangeEvent();
+            break; }
+         case InteractionMode.selectionRectangle: {
+            break; }
+         default: {
+            return; }}
+      wctx.iState.iMode = InteractionMode.none;
       wctx.requestRefresh(); }
 
    private stopDragging() {
       const wctx = this.wctx;
-      if (wctx.iState.knotDragging || wctx.iState.planeDragging) {
-         wctx.requestRefresh(); }
-      this.dragStartLPos = undefined;
-      this.dragStartCPos = undefined;
-      wctx.iState.knotDragging = false;
-      wctx.iState.planeDragging = false; }
+      switch (wctx.iState.iMode) {
+         case InteractionMode.knotDragging:
+         case InteractionMode.planeDragging:
+         case InteractionMode.selectionRectangle: {
+            wctx.iState.iMode = InteractionMode.none;
+            wctx.requestRefresh();
+            break; }}}
 
    private drag() {
       const wctx = this.wctx;
       const cPoint = this.getCanvasCoordinates();
-      if (wctx.iState.knotDragging && wctx.iState.selectedKnotNdx != undefined) {
-         if (this.dragCount++ == 0) {
-            wctx.pushUndoHistoryState(); }
-         const lPoint = wctx.mapCanvasToLogicalCoordinates(cPoint);
-         const lPoint2 = this.snapToGrid(lPoint);
-         wctx.moveKnot(wctx.iState.selectedKnotNdx, lPoint2);
-         wctx.requestRefresh();
-         wctx.fireChangeEvent(); }
-       else if (wctx.iState.planeDragging && this.dragStartLPos) {
-         wctx.moveCoordinatePlane(cPoint, this.dragStartLPos);
-         wctx.requestRefresh();
-         wctx.fireViewportChangeEvent(); }}
+      const lPoint = wctx.mapCanvasToLogicalCoordinates(cPoint);
+      switch (wctx.iState.iMode) {
+         case InteractionMode.knotDragging: {
+            if (wctx.iState.selectedKnotsNdxs.length == 0) {
+               return; }
+            if (this.dragCount == 0) {
+               wctx.pushUndoHistoryState(); }
+            const lPoint2 = this.snapToGrid(lPoint);
+            wctx.moveKnots(wctx.iState.selectedKnotsNdxs, this.dragStartKnotsPos!, lPoint2);
+            wctx.requestRefresh();
+            wctx.fireChangeEvent();
+            break; }
+         case InteractionMode.planeDragging: {
+            wctx.moveCoordinatePlane(cPoint, this.dragStartLPos!);
+            wctx.requestRefresh();
+            wctx.fireViewportChangeEvent();
+            break; }
+         case InteractionMode.selectionRectangle: {
+            wctx.iState.selectionRectangle = PointUtils.createRectangleFromPoints(this.dragStartLPos!, lPoint);
+            wctx.requestRefresh();
+            break; }}
+      this.dragCount++; }
+
+   private updateSelectionOnPointerUp (event: PointerEvent) {
+      const wctx = this.wctx;
+      const iState = wctx.iState;
+      switch (iState.iMode) {
+         case InteractionMode.knotDragging: {                                  // user clicked on a knot
+            if (this.dragCount > 0) {                                          // when moving occurred, don't change the selection
+               return; }
+            if (event.ctrlKey) {                                               // with ctrl key, we toggle the selection of the primary knot
+               if (this.primaryKnotWasSelected) {
+                  iState.selectedKnotsNdxs.shift();                            // remove current knot from selection
+                  wctx.requestRefresh(); }
+               return; }
+            if (iState.selectedKnotsNdxs.length > 1) {
+               iState.selectedKnotsNdxs.length = 1;                            // keep only the primary knot selected
+               wctx.requestRefresh(); }
+            break; }
+         case InteractionMode.planeDragging: {                                 // user clicked on background plane
+            if (this.dragCount > 0) {                                          // when moving occurred, don't change the selection
+               return; }
+            iState.selectedKnotsNdxs = [];                                     // clear selection
+            wctx.requestRefresh();
+            break; }
+         case InteractionMode.selectionRectangle: {
+            if (!iState.selectionRectangle) {
+               return; }
+            for (let knotNdx = 0; knotNdx < wctx.eState.knots.length; knotNdx++) {
+               const knot = wctx.eState.knots[knotNdx];
+               if (PointUtils.isPointInRectangle(knot, iState.selectionRectangle)) {
+                  if (!iState.selectedKnotsNdxs.includes(knotNdx)) {
+                     iState.selectedKnotsNdxs.push(knotNdx); }}}
+            iState.mruKnotNdx = undefined;
+            wctx.requestRefresh();
+            break; }}}
+
+   private extendKnotsSelection (knotNdx: number) {
+      const wctx = this.wctx;
+      const iState = wctx.iState;
+      const mruKnotNdx = iState.mruKnotNdx ?? knotNdx;
+      const i1 = Math.min(mruKnotNdx, knotNdx);
+      const i2 = Math.max(mruKnotNdx, knotNdx);
+      iState.selectedKnotsNdxs = [];
+      for (let i = i1; i <= i2; i++) {
+         iState.selectedKnotsNdxs.push(i); }
+      iState.mruKnotNdx = knotNdx;
+      wctx.requestRefresh(); }
 
    private startZooming() {
       const wctx = this.wctx;
@@ -414,10 +545,7 @@ class PointerController {
       const t = Math.tan(Math.PI / 8);
       this.zoomX = xDist > t * yDist;
       this.zoomY = yDist > t * xDist;
-      this.zooming = true; }
-
-   private stopZooming() {
-      this.zooming = false; }
+      wctx.iState.iMode = InteractionMode.zooming; }
 
    private zoom() {
       const wctx = this.wctx;
@@ -502,10 +630,10 @@ class PointerController {
       wctx.pushUndoHistoryState();
       const lPoint = wctx.mapCanvasToLogicalCoordinates(cPoint);
       const knotNdx = wctx.addKnot(lPoint);
-      wctx.iState.selectedKnotNdx = knotNdx;
+      wctx.iState.selectedKnotsNdxs = [knotNdx];
       wctx.iState.potentialKnotNdx = knotNdx;
-      wctx.iState.knotDragging = false;
-      wctx.iState.planeDragging = false;
+      wctx.iState.mruKnotNdx = knotNdx;
+      wctx.iState.iMode = InteractionMode.none;
       wctx.requestRefresh();
       wctx.fireChangeEvent(); }
 
@@ -606,10 +734,10 @@ class KeyboardController {
       const wctx = this.wctx;
       switch (keyName) {
          case "Backspace": case "Delete": {
-            if (wctx.iState.selectedKnotNdx != undefined) {
-               wctx.iState.knotDragging = false;
+            if (wctx.iState.selectedKnotsNdxs.length > 0) {
+               wctx.iState.iMode = InteractionMode.none;
                wctx.pushUndoHistoryState();
-               wctx.deleteKnot(wctx.iState.selectedKnotNdx);
+               wctx.deleteKnots(wctx.iState.selectedKnotsNdxs);
                wctx.requestRefresh();
                wctx.fireChangeEvent(); }
             return true; }
@@ -742,11 +870,19 @@ function genKeyName (event: KeyboardEvent) : string {
 
 //--- Internal widget context --------------------------------------------------
 
+const enum InteractionMode {
+   none,
+   knotDragging,                                                     // the selected knots are beeing dragged
+   planeDragging,                                                    // the coordinate plane is beeing dragged
+   selectionRectangle,
+   zooming };
+
 interface InteractionState {
-   selectedKnotNdx:                    number | undefined;           // index of currently selected knot or undefined
+   iMode:                              InteractionMode;
+   selectedKnotsNdxs:                  number[];                     // indexes of the currently selected knots
+   selectionRectangle:                 Rectangle | undefined;        // rectangle to select knots
    potentialKnotNdx:                   number | undefined;           // index of potential target knot for mouse click (or undefined)
-   knotDragging:                       boolean;                      // true if the selected knot is beeing dragged
-   planeDragging:                      boolean; }                    // true if the coordinate plane is beeing dragged
+   mruKnotNdx:                         number | undefined; }         // index of most recently used knot
 
 interface HistoryState {
    undoStack:                          Point[][];                    // old knot points
@@ -816,10 +952,11 @@ class WidgetContext {
 
    private resetInteractionState() {
       this.iState = {
-         selectedKnotNdx:  undefined,
-         potentialKnotNdx: undefined,
-         knotDragging:     false,
-         planeDragging:    false}; }
+         iMode:              InteractionMode.none,
+         selectedKnotsNdxs:  [],
+         selectionRectangle: undefined,
+         potentialKnotNdx:   undefined,
+         mruKnotNdx:         undefined }; }
 
    // Resets the context to the initial state.
    public reset() {
@@ -869,6 +1006,13 @@ class WidgetContext {
 
    public mapLogicalToCanvasCoordinates (lPoint: Point) : Point {
       return {x: this.mapLogicalToCanvasXCoordinate(lPoint.x), y: this.mapLogicalToCanvasYCoordinate(lPoint.y)}; }
+
+   public mapLogicalToCanvasRect (rect: Rectangle) : Rectangle {
+      return {
+         x1: this.mapLogicalToCanvasXCoordinate(rect.x1),
+         x2: this.mapLogicalToCanvasXCoordinate(rect.x2),
+         y1: this.mapLogicalToCanvasYCoordinate(rect.y1),
+         y2: this.mapLogicalToCanvasYCoordinate(rect.y2) }; }
 
    public mapCanvasToLogicalXCoordinate (cx: number) : number {
       return this.eState.xMin + cx * (this.eState.xMax - this.eState.xMin) / this.canvas.width; }
@@ -936,14 +1080,23 @@ class WidgetContext {
       eState.yMax = eState.yMin + (eState.yMax - eState.yMin) / fy;
       this.moveCoordinatePlane(cCenter, lCenter); }
 
-   public deleteKnot (knotNdx: number) {
-      const knots = this.eState.knots;
-      const oldKnots = knots.slice();
-      knots.splice(knotNdx, 1);
+   public deleteKnots (knotNdxs: number[]) {
+      const oldKnots = this.eState.knots.slice();
+      this.eState.knots = this.eState.knots.filter((_e,i) => !knotNdxs.includes(i));
       this.fixUpKnotIndexes(oldKnots); }
 
-   public moveKnot (knotNdx: number, newPosition: Point) {
-      this.eState.knots[knotNdx] = newPosition;
+   public moveKnots (knotsNdxs: number[], startPositions: Point[], newPosition: Point) {
+      if (knotsNdxs.length == 0 || knotsNdxs.length != startPositions.length) {
+         return; }
+      const primaryKnotNdx = knotsNdxs[0];
+      this.eState.knots[primaryKnotNdx] = newPosition;
+      const startPos0 = startPositions[0];
+      const deltaX = newPosition.x - startPos0.x;
+      const deltaY = newPosition.y - startPos0.y;
+      for (let i = 1; i < knotsNdxs.length; i++) {
+         const knotNdx = knotsNdxs[i];
+         const startPos = startPositions[i];
+         this.eState.knots[knotNdx] = {x: startPos.x + deltaX, y: startPos.y + deltaY}; }
       this.revampKnots(); }
 
    // Returns the index of the newly inserted knot.
@@ -974,9 +1127,15 @@ class WidgetContext {
       this.fixUpKnotIndexes(oldKnots); }
 
    private fixUpKnotIndexes (oldKnots: Point[]) {
-      this.iState.selectedKnotNdx  = PointUtils.mapPointIndex(oldKnots, this.eState.knots, this.iState.selectedKnotNdx);
-      this.iState.potentialKnotNdx = PointUtils.mapPointIndex(oldKnots, this.eState.knots, this.iState.potentialKnotNdx);
-      this.iState.knotDragging = this.iState.knotDragging && this.iState.selectedKnotNdx != undefined; }
+      const iState = this.iState;
+      const eState = this.eState;
+      const oldFirstSelectedKnot = iState.selectedKnotsNdxs.length > 0 ? oldKnots[iState.selectedKnotsNdxs[0]] : undefined;
+      iState.selectedKnotsNdxs = PointUtils.mapPointsIndexes(oldKnots, eState.knots, iState.selectedKnotsNdxs);
+      const newFirstSelectedKnot = iState.selectedKnotsNdxs.length > 0 ? eState.knots[iState.selectedKnotsNdxs[0]] : undefined;
+      if (iState.iMode == InteractionMode.knotDragging && oldFirstSelectedKnot != newFirstSelectedKnot) {
+         iState.iMode = InteractionMode.none; }
+      iState.potentialKnotNdx = PointUtils.mapPointIndex(oldKnots, eState.knots, iState.potentialKnotNdx);
+      iState.mruKnotNdx = PointUtils.mapPointIndex(oldKnots, eState.knots, iState.mruKnotNdx); }
 
    // Returns the index and distance of the nearest knot or undefined.
    public findNearestKnot (cPoint: Point) : {knotNdx: number; distance: number} | undefined {
@@ -1050,7 +1209,11 @@ class WidgetContext {
       this.updateCanvasCursorStyle(); }
 
    private updateCanvasCursorStyle() {
-      const style = (this.iState.knotDragging || this.iState.planeDragging) ? "move" : "auto";
+      let style: string;
+      switch (this.iState.iMode) {
+         case InteractionMode.knotDragging:  style = "move"; break;
+         case InteractionMode.planeDragging: style = "move"; break;
+         default:                            style = "auto"; break; }
       this.canvas.style.cursor = style; }
 
    public fireChangeEvent() {
@@ -1195,10 +1358,13 @@ export class Widget {
       const pz = this.wctx.eState.primaryZoomMode;
       const primaryZoomAxis = (pz == ZoomMode.x) ? "x-axis" : (pz == ZoomMode.y) ? "y-axis" : "both axes";
       return [
-         "drag knot with mouse or touch",  "move a knot",
+         "drag knot with mouse or touch",  "move a knot or a group of selected knots",
          "drag plane with mouse or touch", "move the coordinate space",
          "click or tap on knot",           "select a knot",
-         "Delete / Backspace",             "delete the selected knot",
+         "Shift+click on knot",            "select knots from most recently selected to current",
+         "Ctrl+click on knot",             "add or remove knot from selection",
+         "Shift+drag",                     "drag a rectangle to select additional knots",
+         "Delete / Backspace",             "delete the selected knots",
          "double-click or double-tap",     "create a new knot",
          "Esc",                            "abort moving",
          "Ctrl+Z / Alt+Backspace / u",     "undo",

@@ -22,6 +22,7 @@ const initialEditorState = <FunctionCurveEditor.EditorState>{
    relevantXMin:   -10,
    relevantXMax:   10,
    gridEnabled:    true,
+// focusShield:    true,
    customPaintFunction };
 
 function dumpFunctionValues (f: Function) {

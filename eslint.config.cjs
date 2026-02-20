@@ -98,6 +98,7 @@ const rules = {
    "@typescript-eslint/prefer-for-of": "off",
    "@typescript-eslint/restrict-plus-operands": "off",
    "@typescript-eslint/restrict-template-expressions": "off",
+   "@typescript-eslint/switch-exhaustiveness-check": "off",
    "no-var": "off",                                     // @typescript-eslint/recommended switches this on
 
    // Check-file plugin rules:

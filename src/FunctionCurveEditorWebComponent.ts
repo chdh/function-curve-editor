@@ -1,4 +1,4 @@
-import {Widget, EditorState} from "./FunctionCurveEditor.js";
+import {Widget, EditorState} from "./FunctionCurveEditor.ts";
 
 export class FunctionCurveEditorElement extends HTMLElement {
 
