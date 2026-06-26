@@ -69,15 +69,18 @@ class PointUtils {
          console.log("[" + i + "] = (" + points[i].x + ", " + points[i].y + ")"); }}
 
    public static encodeCoordinateList (points: Point[]) : string {
-      let s: string = "";
-      for (const point of points) {
-         if (s.length > 0) {
+      let s: string = "[";
+      for (let i = 0; i < points.length; i++) {
+         const point = points[i];
+         if (i > 0) {
             s += ", "; }
          s += "[" + formatCoordinateValue(point.x) + ", " + formatCoordinateValue(point.y) + "]"; }
+      s += "]";
       return s; }
 
    public static decodeCoordinateList (s: string) : Point[] {
-      const a = JSON.parse("[" + s + "]");
+      const json = /^\s*\[\s*\[/.test(s) ? s : "[" + s + "]";                  // add brackets for compatibility with old format
+      const a = JSON.parse(json);
       const points: Point[] = Array(a.length);
       for (let i = 0; i < a.length; i++) {
          const e = a[i];
@@ -392,7 +395,7 @@ class PointerController {
 
    private releaseAllPointers() {
       while (this.pointers.size > 0) {
-         const pointerId = this.pointers.keys().next().value;
+         const pointerId = this.pointers.keys().next().value!;
          this.releasePointer(pointerId); }}
 
    private startDragging (event: PointerEvent) {
@@ -400,7 +403,7 @@ class PointerController {
       const iState = wctx.iState;
       const cPoint = this.getCanvasCoordinates();
       const lPoint = wctx.mapCanvasToLogicalCoordinates(cPoint);
-      const pointerType = this.pointers.values().next().value.pointerType;
+      const pointerType = this.pointers.values().next().value?.pointerType;
       const knotNdx = this.findNearKnot(cPoint, pointerType);
       if (knotNdx != undefined && event.shiftKey) {                            // extend selection
          this.extendKnotsSelection(knotNdx);
@@ -531,8 +534,8 @@ class PointerController {
    private startZooming() {
       const wctx = this.wctx;
       const pointerValues = this.pointers.values();
-      const event1 = pointerValues.next().value;
-      const event2 = pointerValues.next().value;
+      const event1 = pointerValues.next().value!;
+      const event2 = pointerValues.next().value!;
       const cPoint1 = this.getCanvasCoordinatesFromEvent(event1);
       const cPoint2 = this.getCanvasCoordinatesFromEvent(event2);
       const cCenter = PointUtils.computeCenter(cPoint1, cPoint2);
@@ -551,8 +554,8 @@ class PointerController {
       const wctx = this.wctx;
       const eState = wctx.eState;
       const pointerValues = this.pointers.values();
-      const event1 = pointerValues.next().value;
-      const event2 = pointerValues.next().value;
+      const event1 = pointerValues.next().value!;
+      const event2 = pointerValues.next().value!;
       const cPoint1 = this.getCanvasCoordinatesFromEvent(event1);
       const cPoint2 = this.getCanvasCoordinatesFromEvent(event2);
       const newCCenter = PointUtils.computeCenter(cPoint1, cPoint2);
@@ -652,7 +655,7 @@ class PointerController {
       wctx.iState.potentialKnotNdx = undefined;
       wctx.requestRefresh(); }
 
-   private findNearKnot (cPoint: Point, pointerType: string) : number | undefined {
+   private findNearKnot (cPoint: Point, pointerType: string | undefined) : number | undefined {
       const wctx = this.wctx;
       const r = wctx.findNearestKnot(cPoint);
       const proximityRange = (pointerType == "touch") ? 30 : 15;
@@ -682,7 +685,7 @@ class PointerController {
    private getCanvasCoordinates() : Point {
       if (this.pointers.size < 1) {
          throw new Error("No active pointers."); }
-      const event = this.pointers.values().next().value;
+      const event = this.pointers.values().next().value!;
       return this.getCanvasCoordinatesFromEvent(event); }
 
    private getCanvasCoordinatesFromEvent (event: MouseEvent) : Point {

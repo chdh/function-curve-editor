@@ -2,11 +2,10 @@
    "compilerOptions": {
       "allowUnreachableCode": false,
       "alwaysStrict": true,
-      "baseUrl": "src",
       "forceConsistentCasingInFileNames": true,
       "lib": ["ES2020", "DOM"],
-      "module": "ES2020",
-      "moduleResolution": "node",
+      "module": "esnext",
+      "moduleResolution": "bundler",
       "noFallthroughCasesInSwitch": true,
       "noImplicitAny": true,
       "noImplicitOverride": true,
@@ -16,9 +15,10 @@
       "noUnusedParameters": true,
       "outDir": "tempBuild",
       "paths": {
-         "function-curve-editor": ["../../dist/index.d.ts"]
+         "function-curve-editor": ["../dist/index.d.ts"]
       },
       "removeComments": true,
+      "rootDir": "src",
       "strictFunctionTypes": true,
       "strictNullChecks": true,
       "target": "ES2020"
