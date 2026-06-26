@@ -1,5 +1,3 @@
-import Path from "node:path";
-import alias from '@rollup/plugin-alias';
 import {nodeResolve} from '@rollup/plugin-node-resolve';
 
 export default {
@@ -9,11 +7,6 @@ export default {
       format: "iife"
    },
    plugins: [
-      nodeResolve(),
-      alias({
-         entries: {
-            "function-curve-editor": Path.resolve("../dist/FunctionCurveEditor.js")
-         }
-      })
+      nodeResolve()
    ]
 };

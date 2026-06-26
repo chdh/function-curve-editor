@@ -1,5 +1,8 @@
 {
    "private": true,
+   "dependencies": {
+      "function-curve-editor": "^1.0.11"
+   },
    "scripts": {
       "build": "tsc && rollup -c"
    }
